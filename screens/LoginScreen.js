@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LoginScreen = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    const auth = getAuth();
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      onLogin();
+      // Simple validation
+      if (username.trim() && password.trim()) {
+        // Store user info in AsyncStorage
+        await AsyncStorage.setItem('user', JSON.stringify({ username }));
+        onLogin();
+      }
     } catch (error) {
-      console.error('Login error:', error.message);
+      console.error('Login error:', error);
     }
   };
 
@@ -26,10 +29,9 @@ const LoginScreen = ({ onLogin }) => {
         <Text style={styles.title}>Welcome Back</Text>
         <TextInput
           style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
+          placeholder="Username"
+          value={username}
+          onChangeText={setUsername}
           autoCapitalize="none"
           placeholderTextColor="#999"
         />

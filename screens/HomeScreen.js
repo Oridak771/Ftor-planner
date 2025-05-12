@@ -11,16 +11,16 @@ import {
   ScrollView,
   Image
 } from 'react-native';
-import { collection, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from '../App';
+import { getMeals, deleteMeal } from '../utils/storage';
 import MealEditor from './MealEditor';
 import theme from '../components/theme';
 import Card from '../components/Card';
 import MealCard from '../components/MealCard';
 import DaySelector from '../components/DaySelector';
 import Button from '../components/Button';
+import { t } from '../locales/i18n';
 
 const HomeScreen = () => {
   const [meals, setMeals] = useState([]);
@@ -28,7 +28,7 @@ const HomeScreen = () => {
   const [showEditor, setShowEditor] = useState(false);
   const [editMeal, setEditMeal] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [isNextWeek, setIsNextWeek] = useState(false);
+  const [weekIndex, setWeekIndex] = useState(0);
   const [enabledMealTypes, setEnabledMealTypes] = useState({
     breakfast: true,
     lunch: true,
@@ -63,18 +63,12 @@ const HomeScreen = () => {
   const fetchMeals = async () => {
     setRefreshing(true);
     try {
-      const querySnapshot = await getDocs(collection(db, 'meals'));
-      const mealsData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      
+      const mealsData = await getMeals();
       // Sort meals by type (breakfast, lunch, dinner, snack)
       const sortedMeals = mealsData.sort((a, b) => {
         const typeOrder = { breakfast: 1, lunch: 2, dinner: 3, snack: 4 };
         return (typeOrder[a.type] || 5) - (typeOrder[b.type] || 5);
       });
-      
       setMeals(sortedMeals);
     } catch (error) {
       console.error('Error fetching meals:', error);
@@ -96,7 +90,7 @@ const HomeScreen = () => {
 
   const handleDeleteMeal = async (mealId) => {
     try {
-      await deleteDoc(doc(db, 'meals', mealId));
+      await deleteMeal(mealId);
       fetchMeals();
     } catch (error) {
       console.error('Error deleting meal:', error);
@@ -118,46 +112,27 @@ const HomeScreen = () => {
     setSelectedDay(day);
   };
 
-  const toggleWeekView = () => {
-    setIsNextWeek(!isNextWeek);
-    // When toggling to next week, select the first day of next week
-    if (!isNextWeek) {
-      // Get the first day of next week (Monday)
-      const nextMonday = getNextWeekDay('Monday');
-      setSelectedDay(nextMonday);
-    } else {
-      // When toggling back to this week, select today
-      setSelectedDay(today);
-    }
+  const weekLabels = ['This Week', 'Next Week', 'Week After Next'];
+
+  const toggleWeekView = (direction) => {
+    setWeekIndex((prev) => {
+      let next = prev + direction;
+      if (next < 0) next = 0;
+      if (next > 2) next = 2;
+      return next;
+    });
   };
 
-  // Get the day name for a day in the next week
-  const getNextWeekDay = (dayName) => {
-    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const today = new Date();
-    const dayIndex = daysOfWeek.indexOf(dayName);
-    const todayIndex = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    
-    // Calculate days to add to get to next week's day
-    let daysToAdd = dayIndex - todayIndex + 7; // Add 7 to get to next week
-    
-    // Create date for next week's day
-    const nextWeekDay = new Date(today);
-    nextWeekDay.setDate(today.getDate() + daysToAdd);
-    
-    return daysOfWeek[nextWeekDay.getDay()];
-  };
-
-  // Get days for current or next week
   const getWeekDays = () => {
     const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    if (!isNextWeek) {
-      return daysOfWeek;
-    } else {
-      // For next week, we'll return the same day names but they represent next week's days
-      return daysOfWeek.map(day => day);
-    }
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1 + weekIndex * 7); // Monday as start
+    return daysOfWeek.map((day, i) => {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      return d.toLocaleDateString('en-US', { weekday: 'long' });
+    });
   };
 
   // Filter meals for today
@@ -188,11 +163,11 @@ const HomeScreen = () => {
   // Get meal type label
   const getMealTypeLabel = (type) => {
     switch (type) {
-      case 'breakfast': return 'Breakfast';
-      case 'lunch': return 'Lunch';
-      case 'dinner': return 'Dinner';
-      case 'snack': return 'Snack';
-      default: return 'Other';
+      case 'breakfast': return t('breakfast');
+      case 'lunch': return t('lunch');
+      case 'dinner': return t('dinner');
+      case 'snack': return t('snack');
+      default: return t('other');
     }
   };
   
@@ -229,26 +204,43 @@ const HomeScreen = () => {
     }
   };
 
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <MaterialIcons name="restaurant" size={60} color={theme.COLORS.gray[400]} />
+      <Text style={styles.emptyStateTitle}>{t('noMeals')}</Text>
+      <Button 
+        title={t('addMeal')} 
+        onPress={() => setShowEditor(true)} 
+        style={styles.emptyStateButton}
+      />
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.background} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Meal Planner</Text>
-        <TouchableOpacity 
-          style={styles.weekToggle}
-          onPress={toggleWeekView}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.weekToggleText}>
-            {isNextWeek ? 'Next Week' : 'This Week'}
-          </Text>
-          <MaterialIcons 
-            name={isNextWeek ? 'arrow-back' : 'arrow-forward'} 
-            size={20} 
-            color={theme.COLORS.primary} 
-          />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('mealPlanner')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={styles.weekToggle}
+            onPress={() => toggleWeekView(-1)}
+            disabled={weekIndex === 0}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="arrow-back" size={20} color={weekIndex === 0 ? theme.COLORS.gray[300] : theme.COLORS.primary} />
+          </TouchableOpacity>
+          <Text style={styles.weekToggleText}>{weekLabels[weekIndex]}</Text>
+          <TouchableOpacity 
+            style={styles.weekToggle}
+            onPress={() => toggleWeekView(1)}
+            disabled={weekIndex === 2}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="arrow-forward" size={20} color={weekIndex === 2 ? theme.COLORS.gray[300] : theme.COLORS.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -265,12 +257,12 @@ const HomeScreen = () => {
           />
         }
       >
-        {/* Today's Summary Card */}
-        {!isNextWeek && (
+        {/* Today's Summary Card - only show for current week */}
+        {weekIndex === 0 && (
           <Card style={styles.todayCard}>
             <View style={styles.todayHeader}>
               <View style={styles.todayTitleContainer}>
-                <Text style={styles.todayTitle}>Today</Text>
+                <Text style={styles.todayTitle}>{t('today')}</Text>
                 <Text style={styles.todayDate}>{today}</Text>
               </View>
               <TouchableOpacity
@@ -316,9 +308,9 @@ const HomeScreen = () => {
             ) : (
               <View style={styles.emptyState}>
                 <MaterialIcons name="restaurant" size={40} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.emptyStateTextWhite}>No meals planned for today</Text>
+                <Text style={styles.emptyStateTextWhite}>{t('noMealsToday')}</Text>
                 <Button
-                  title="Add Your First Meal"
+                  title={t('addFirstMeal')}
                   variant="outline"
                   onPress={() => handleAddMeal(today)}
                   style={styles.emptyStateButton}
@@ -331,7 +323,7 @@ const HomeScreen = () => {
 
         {/* Weekly Planner Section */}
         <Text style={styles.sectionTitle}>
-          {isNextWeek ? 'Next Week Plan' : 'Weekly Plan'}
+          {weekLabels[weekIndex]} {t('plan')}
         </Text>
         
         <DaySelector
@@ -339,7 +331,7 @@ const HomeScreen = () => {
           onSelectDay={handleSelectDay}
           onAddMeal={handleAddMeal}
           showAddButton={true}
-          isNextWeek={isNextWeek}
+          isNextWeek={weekIndex > 0}
           daysOfWeek={getWeekDays()}
         />
 
@@ -349,7 +341,7 @@ const HomeScreen = () => {
             <View style={styles.selectedDayTitleContainer}>
               <Text style={styles.selectedDayTitle}>{selectedDay}</Text>
               <Text style={styles.selectedDaySubtitle}>
-                {isNextWeek ? 'Next Week' : 'This Week'}
+                {weekLabels[weekIndex]}
               </Text>
             </View>
             <TouchableOpacity
@@ -357,7 +349,7 @@ const HomeScreen = () => {
               onPress={() => handleAddMeal(selectedDay)}
             >
               <MaterialIcons name="add" size={20} color={theme.COLORS.white} />
-              <Text style={styles.addButtonText}>Add Meal</Text>
+              <Text style={styles.addButtonText}>{t('addMeal')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -386,9 +378,9 @@ const HomeScreen = () => {
           ) : (
             <View style={styles.emptyState}>
               <MaterialIcons name="event-busy" size={40} color={theme.COLORS.gray[400]} />
-              <Text style={styles.emptyStateText}>No meals planned for {selectedDay}</Text>
+              <Text style={styles.emptyStateText}>{t('noMealsForDay', { day: selectedDay })}</Text>
               <Button
-                title={`Add Meal for ${selectedDay}`}
+                title={t('addMealForDay', { day: selectedDay })}
                 onPress={() => handleAddMeal(selectedDay)}
                 style={styles.emptyStateButton}
               />

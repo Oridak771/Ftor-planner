@@ -9,13 +9,19 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Platform
+  Platform,
+  I18nManager,
+  ActivityIndicator // Import ActivityIndicator
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import theme from '../components/theme';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { t, getCurrentLang, getLangs, setLanguage, loadTranslations } from '../locales/i18n';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { useLanguage } from '../components/LanguageContext';
 
 const SettingsScreen = () => {
   const [isVegetarian, setIsVegetarian] = useState(false);
@@ -29,9 +35,20 @@ const SettingsScreen = () => {
     dinner: true,
     snack: true
   });
+  const [language, setLangState] = useState(getCurrentLang());
+  const { currentLanguage, setLanguage: setAppLanguage } = useLanguage();
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [isChangingLanguage, setIsChangingLanguage] = useState(false); // Add loading state
+
+  const languageOptions = [
+    { code: 'en', name: 'English', icon: '🇬🇧' },
+    { code: 'fr', name: 'Français', icon: '🇫🇷' },
+    { code: 'ar', name: 'العربية', icon: '🇸🇦' }
+  ];
 
   useEffect(() => {
     loadSettings();
+    loadTranslations();
   }, []);
 
   const loadSettings = async () => {
@@ -126,32 +143,104 @@ const SettingsScreen = () => {
     saveSetting('mealTypes', updatedMealTypes);
   };
 
-  const handleClearData = () => {
+  const backupKeys = [
+    'meals', 'recipes', 'shoppingList', 'mealTypes', 'isVegetarian', 'isDarkMode', 'notificationsEnabled', 'mealReminders', 'weekStartsOn', 'language'
+  ];
+
+  const handleExportData = async () => {
+    try {
+      const backup = {};
+      for (const key of backupKeys) {
+        const value = await AsyncStorage.getItem(key);
+        backup[key] = value;
+      }
+      const fileUri = FileSystem.documentDirectory + 'ftorplanner-backup.json';
+      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
+      await Sharing.shareAsync(fileUri);
+      Alert.alert('Export Successful', 'Your data has been exported successfully.');
+    } catch (e) {
+      Alert.alert('Export Failed', 'Could not export data.');
+    }
+  };
+
+  const handleImportData = async () => {
+    try {
+      // In a real app, use a file picker. Here, just look for the backup file in documentDirectory.
+      const fileUri = FileSystem.documentDirectory + 'ftorplanner-backup.json';
+      const content = await FileSystem.readAsStringAsync(fileUri);
+      const backup = JSON.parse(content);
+      for (const key of backupKeys) {
+        if (backup[key] !== undefined) {
+          await AsyncStorage.setItem(key, backup[key]);
+        }
+      }
+      Alert.alert('Import Successful', 'Your data has been imported successfully.');
+    } catch (e) {
+      Alert.alert('Import Failed', 'Could not import data.');
+    }
+  };
+
+  const handleClearData = async () => {
     Alert.alert(
       'Clear All Data',
-      'Are you sure you want to clear all your meal plans and recipes? This action cannot be undone.',
+      'Are you sure you want to clear all app data? This action cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Clear Data', 
-          style: 'destructive',
-          onPress: () => {
-            // This would clear data from Firestore in a real app
-            Alert.alert('Data Cleared', 'All your data has been cleared successfully.');
-          }
+        {
+          text: 'Cancel',
+          style: 'cancel',
         },
-      ]
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear all data using the backup keys
+              for (const key of backupKeys) {
+                await AsyncStorage.removeItem(key);
+              }
+              // Reset all states to default
+              setIsVegetarian(false);
+              setIsDarkMode(false);
+              setNotificationsEnabled(true);
+              setMealReminders(true);
+              setWeekStartsOn('monday');
+              setMealTypes({
+                breakfast: true,
+                lunch: true,
+                dinner: true,
+                snack: true
+              });
+              Alert.alert('Success', 'All data has been cleared successfully.');
+            } catch (error) {
+              console.error('Error clearing data:', error);
+              Alert.alert('Error', 'Failed to clear data. Please try again.');
+            }
+          },
+        },
+      ],
     );
   };
 
-  const handleExportData = () => {
-    // This would export data in a real app
-    Alert.alert('Export Successful', 'Your data has been exported successfully.');
-  };
+  const handleLanguageChange = async (langCode) => {
+    if (isChangingLanguage) return; // Prevent double taps
 
-  const handleImportData = () => {
-    // This would import data in a real app
-    Alert.alert('Import Successful', 'Your data has been imported successfully.');
+    setIsChangingLanguage(true);
+    try {
+      const result = await setAppLanguage(langCode);
+
+      if (result === true) {
+        setShowLanguageModal(false);
+      } else if (result === false) {
+        Alert.alert(t('error'), t('languageChangeError'));
+        setShowLanguageModal(false);
+      }
+    } catch (error) {
+      console.error('Error changing language in SettingsScreen:', error);
+      Alert.alert(t('error'), t('languageChangeError'));
+      setShowLanguageModal(false);
+    } finally {
+      setIsChangingLanguage(false);
+    }
   };
 
   const renderSettingSwitch = (title, value, onToggle, description = null, disabled = false) => (
@@ -275,6 +364,30 @@ const SettingsScreen = () => {
             ))}
           </View>
         </Card>
+
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('language')}</Text>
+          <TouchableOpacity 
+            style={styles.languageSelector}
+            onPress={() => setShowLanguageModal(true)}
+          >
+            <View style={styles.settingRow}>
+              <MaterialIcons name="language" size={24} color={theme.COLORS.primary} />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>{t('language')}</Text>
+                <Text style={styles.settingValue}>
+                  {languageOptions.find(lang => lang.code === currentLanguage)?.name}
+                </Text>
+              </View>
+              <MaterialIcons 
+                name="chevron-right" 
+                size={24} 
+                color={theme.COLORS.gray[400]}
+                style={I18nManager.isRTL && { transform: [{ scaleX: -1 }] }}
+              />
+            </View>
+          </TouchableOpacity>
+        </Card>
         
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Data Management</Text>
@@ -329,6 +442,55 @@ const SettingsScreen = () => {
           </TouchableOpacity>
         </Card>
       </ScrollView>
+
+      {showLanguageModal && (
+        <View style={styles.modalOverlay}>
+          <Card style={styles.languageModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('selectLanguage')}</Text>
+              <TouchableOpacity 
+                onPress={() => !isChangingLanguage && setShowLanguageModal(false)} // Disable close while changing
+                style={styles.closeButton}
+                disabled={isChangingLanguage}
+              >
+                <MaterialIcons name="close" size={24} color={theme.COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            {languageOptions.map((lang) => (
+              <TouchableOpacity
+                key={lang.code}
+                style={[
+                  styles.languageOption,
+                  currentLanguage === lang.code && styles.selectedLanguage,
+                  isChangingLanguage && styles.disabledOption // Style disabled options
+                ]}
+                onPress={() => handleLanguageChange(lang.code)}
+                disabled={isChangingLanguage || currentLanguage === lang.code}
+              >
+                <Text style={styles.languageIcon}>{lang.icon}</Text>
+                <Text style={[
+                  styles.languageText,
+                  currentLanguage === lang.code && styles.selectedLanguageText
+                ]}>
+                  {lang.name}
+                </Text>
+                {isChangingLanguage && currentLanguage !== lang.code ? (
+                  <ActivityIndicator size="small" color={theme.COLORS.primary} style={styles.checkIcon} />
+                ) : currentLanguage === lang.code ? (
+                  <MaterialIcons 
+                    name="check" 
+                    size={20} 
+                    color={theme.COLORS.primary}
+                    style={styles.checkIcon} 
+                  />
+                ) : (
+                  <View style={styles.checkIconPlaceholder} /> // Keep spacing consistent
+                )}
+              </TouchableOpacity>
+            ))}
+          </Card>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -465,6 +627,98 @@ const styles = StyleSheet.create({
     fontSize: theme.FONT_SIZES.md,
     color: theme.COLORS.primary,
   },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.SPACING.lg,
+  },
+  languageModal: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: theme.COLORS.white,
+    borderRadius: theme.BORDER_RADIUS.lg,
+    padding: 0,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: theme.SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.gray[200],
+  },
+  modalTitle: {
+    fontSize: theme.FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: theme.COLORS.text,
+  },
+  closeButton: {
+    padding: theme.SPACING.xs,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.gray[200],
+  },
+  disabledOption: {
+    opacity: 0.6, // Dim the option when changing language
+  },
+  selectedLanguage: {
+    backgroundColor: theme.COLORS.gray[100],
+  },
+  languageIcon: {
+    fontSize: theme.FONT_SIZES.xl,
+    marginRight: theme.SPACING.sm,
+  },
+  languageText: {
+    fontSize: theme.FONT_SIZES.md,
+    color: theme.COLORS.text,
+    flex: 1,
+  },
+  selectedLanguageText: {
+    fontWeight: 'bold',
+    color: theme.COLORS.primary,
+  },
+  checkIcon: {
+    marginLeft: theme.SPACING.md,
+    width: 20, // Ensure consistent width
+    height: 20, // Ensure consistent height
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkIconPlaceholder: {
+    marginLeft: theme.SPACING.md,
+    width: 20,
+    height: 20,
+  },
+  languageSelector: {
+    paddingVertical: theme.SPACING.sm,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: theme.SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.gray[200],
+  },
+  settingTitle: {
+    fontSize: theme.FONT_SIZES.md,
+    fontWeight: '600',
+    color: theme.COLORS.text,
+    marginBottom: 2,
+  },
+  settingValue: {
+    fontSize: theme.FONT_SIZES.sm,
+    color: theme.COLORS.gray[600],
+  }
 });
 
 export default SettingsScreen;

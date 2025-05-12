@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, I18nManager } from 'react-native';
 import theme from './theme';
 
 const Card = ({ 
@@ -46,6 +46,7 @@ const Card = ({
         styles.card,
         getShadow(),
         { backgroundColor: getBackgroundColor() },
+        I18nManager.isRTL && styles.rtl,
         style,
       ]}
     >
@@ -60,6 +61,9 @@ const styles = StyleSheet.create({
     padding: theme.SPACING.md,
     marginVertical: theme.SPACING.sm,
   },
+  rtl: {
+    direction: 'rtl',
+  },
 });
 
-export default Card; 
+export default Card;

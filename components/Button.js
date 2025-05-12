@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, I18nManager } from 'react-native';
 import theme from './theme';
 
 const Button = ({
@@ -50,28 +50,32 @@ const Button = ({
     }
   };
 
-  // Determine button size
+  // Determine button size with RTL support
   const getSizeStyle = () => {
-    switch (size) {
-      case 'small':
-        return { 
-          paddingVertical: theme.SPACING.xs,
-          paddingHorizontal: theme.SPACING.md,
-          borderRadius: theme.BORDER_RADIUS.sm,
-        };
-      case 'large':
-        return { 
-          paddingVertical: theme.SPACING.md,
-          paddingHorizontal: theme.SPACING.xl,
-          borderRadius: theme.BORDER_RADIUS.lg,
-        };
-      default:
-        return { 
-          paddingVertical: theme.SPACING.sm,
-          paddingHorizontal: theme.SPACING.lg,
-          borderRadius: theme.BORDER_RADIUS.md,
-        };
+    const baseStyle = {
+      paddingVertical: size === 'small' ? theme.SPACING.xs : 
+                      size === 'large' ? theme.SPACING.md : 
+                      theme.SPACING.sm,
+      borderRadius: size === 'small' ? theme.BORDER_RADIUS.sm :
+                   size === 'large' ? theme.BORDER_RADIUS.lg :
+                   theme.BORDER_RADIUS.md,
+    };
+
+    // Handle RTL padding
+    if (I18nManager.isRTL) {
+      baseStyle.paddingRight = size === 'small' ? theme.SPACING.md :
+                              size === 'large' ? theme.SPACING.xl :
+                              theme.SPACING.lg;
+      baseStyle.paddingLeft = size === 'small' ? theme.SPACING.md :
+                             size === 'large' ? theme.SPACING.xl :
+                             theme.SPACING.lg;
+    } else {
+      baseStyle.paddingHorizontal = size === 'small' ? theme.SPACING.md :
+                                   size === 'large' ? theme.SPACING.xl :
+                                   theme.SPACING.lg;
     }
+
+    return baseStyle;
   };
 
   // Get font size based on button size
@@ -94,6 +98,7 @@ const Button = ({
         getSizeStyle(),
         fullWidth && styles.fullWidth,
         disabled && styles.disabled,
+        I18nManager.isRTL && styles.rtl,
         style,
       ]}
       onPress={onPress}
@@ -110,6 +115,7 @@ const Button = ({
           style={[
             styles.text, 
             { color: getTextColor(), fontSize: getFontSize() },
+            I18nManager.isRTL && styles.rtlText,
             textStyle
           ]}
         >
@@ -124,10 +130,12 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
     ...theme.SHADOWS.small,
   },
   text: {
     fontWeight: '600',
+    textAlign: 'center',
   },
   fullWidth: {
     width: '100%',
@@ -135,6 +143,12 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.6,
   },
+  rtl: {
+    flexDirection: 'row-reverse',
+  },
+  rtlText: {
+    writingDirection: 'rtl',
+  }
 });
 
-export default Button; 
+export default Button;

@@ -18,10 +18,9 @@ A modern meal planning application built with React Native and Expo, featuring a
 
 - React Native
 - Expo
-- Firebase (Authentication & Firestore)
+- AsyncStorage for data persistence
 - Lottie Animations
 - React Navigation
-- AsyncStorage
 
 ## Getting Started
 
@@ -80,5 +79,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [Expo](https://expo.dev/)
 - [React Native](https://reactnative.dev/)
-- [Firebase](https://firebase.google.com/)
-- [Lottie](https://lottiefiles.com/) 
+- [Lottie](https://lottiefiles.com/)

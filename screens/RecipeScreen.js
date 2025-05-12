@@ -1,639 +1,514 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  TouchableOpacity, 
-  SafeAreaView,
-  StatusBar,
+import {
+  View,
+  Text,
   TextInput,
-  RefreshControl,
-  Image,
-  Modal,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
   ScrollView,
-  ActivityIndicator
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  Alert,
+  I18nManager
 } from 'react-native';
-import { collection, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
 import { MaterialIcons } from '@expo/vector-icons';
-import { db } from '../App';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../components/theme';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { t } from '../locales/i18n';
+
+const STORAGE_KEY = 'recipes';
 
 const RecipeScreen = () => {
   const [recipes, setRecipes] = useState([]);
-  const [filteredRecipes, setFilteredRecipes] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedRecipe, setSelectedRecipe] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [editingRecipe, setEditingRecipe] = useState(null);
   const [newRecipe, setNewRecipe] = useState({
     title: '',
     description: '',
     ingredients: '',
     instructions: '',
-    imageUrl: '',
     prepTime: '',
     cookTime: '',
     servings: '',
-    category: 'main',
+    category: ''
   });
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    fetchRecipes();
+    loadRecipes();
   }, []);
 
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredRecipes(recipes);
-    } else {
-      const filtered = recipes.filter(
-        recipe => 
-          recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (recipe.description && recipe.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (recipe.ingredients && recipe.ingredients.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-      setFilteredRecipes(filtered);
-    }
-  }, [searchQuery, recipes]);
-
-    const fetchRecipes = async () => {
-    setRefreshing(true);
+  const loadRecipes = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'recipes'));
-      const recipesData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setRecipes(recipesData);
-      setFilteredRecipes(recipesData);
-    } catch (error) {
-      console.error('Error fetching recipes:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const handleAddRecipe = async () => {
-    if (!newRecipe.title.trim()) return;
-    
-    setIsLoading(true);
-    try {
-      const recipeData = {
-        ...newRecipe,
-        createdAt: new Date().toISOString(),
-      };
-      
-      await addDoc(collection(db, 'recipes'), recipeData);
-      setNewRecipe({
-        title: '',
-        description: '',
-        ingredients: '',
-        instructions: '',
-        imageUrl: '',
-        prepTime: '',
-        cookTime: '',
-        servings: '',
-        category: 'main',
-      });
-      setShowAddModal(false);
-      fetchRecipes();
-    } catch (error) {
-      console.error('Error adding recipe:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDeleteRecipe = async (recipeId) => {
-    try {
-      await deleteDoc(doc(db, 'recipes', recipeId));
-    fetchRecipes();
-      if (selectedRecipe && selectedRecipe.id === recipeId) {
-        setSelectedRecipe(null);
+      const savedRecipes = await AsyncStorage.getItem(STORAGE_KEY);
+      if (savedRecipes) {
+        setRecipes(JSON.parse(savedRecipes));
       }
     } catch (error) {
-      console.error('Error deleting recipe:', error);
+      console.error('Error loading recipes:', error);
+      Alert.alert(t('error'), t('loadRecipesError'));
     }
   };
 
-  const renderRecipeCard = ({ item }) => {
-  return (
-      <TouchableOpacity 
-        style={styles.recipeCard}
-        onPress={() => setSelectedRecipe(item)}
-      >
-        <View style={styles.recipeCardContent}>
-          {item.imageUrl ? (
-            <Image 
-              source={{ uri: item.imageUrl }} 
-              style={styles.recipeImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.recipePlaceholder}>
-              <MaterialIcons name="restaurant" size={40} color={theme.COLORS.gray[400]} />
-            </View>
-          )}
-          <View style={styles.recipeInfo}>
-            <Text style={styles.recipeTitle}>{item.title}</Text>
-            {item.description && (
-              <Text 
-                style={styles.recipeDescription}
-                numberOfLines={2}
-              >
-                {item.description}
-              </Text>
-            )}
-            <View style={styles.recipeMetaContainer}>
-              {item.prepTime && (
-                <View style={styles.recipeMeta}>
-                  <MaterialIcons name="access-time" size={16} color={theme.COLORS.gray[600]} />
-                  <Text style={styles.recipeMetaText}>{item.prepTime} min</Text>
-                </View>
-              )}
-              {item.servings && (
-                <View style={styles.recipeMeta}>
-                  <MaterialIcons name="people" size={16} color={theme.COLORS.gray[600]} />
-                  <Text style={styles.recipeMetaText}>{item.servings} servings</Text>
-                </View>
-              )}
-            </View>
-          </View>
+  const saveRecipes = async (updatedRecipes) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedRecipes));
+      setRecipes(updatedRecipes);
+    } catch (error) {
+      console.error('Error saving recipes:', error);
+      Alert.alert(t('error'), t('saveRecipesError'));
+    }
+  };
+
+  const handleSave = () => {
+    if (!newRecipe.title.trim()) {
+      Alert.alert(t('error'), t('titleRequired'));
+      return;
+    }
+
+    const recipeToSave = {
+      id: editingRecipe?.id || Date.now().toString(),
+      ...newRecipe,
+      createdAt: editingRecipe?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedRecipes = editingRecipe
+      ? recipes.map(recipe => recipe.id === editingRecipe.id ? recipeToSave : recipe)
+      : [...recipes, recipeToSave];
+
+    saveRecipes(updatedRecipes);
+    setIsModalVisible(false);
+    resetForm();
+  };
+
+  const handleDelete = (id) => {
+    Alert.alert(
+      t('deleteRecipe'),
+      t('deleteRecipeConfirm'),
+      [
+        {
+          text: t('cancel'),
+          style: 'cancel'
+        },
+        {
+          text: t('delete'),
+          onPress: () => {
+            const updatedRecipes = recipes.filter(recipe => recipe.id !== id);
+            saveRecipes(updatedRecipes);
+          },
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
+  const resetForm = () => {
+    setNewRecipe({
+      title: '',
+      description: '',
+      ingredients: '',
+      instructions: '',
+      prepTime: '',
+      cookTime: '',
+      servings: '',
+      category: ''
+    });
+    setEditingRecipe(null);
+  };
+
+  const startEdit = (recipe) => {
+    setEditingRecipe(recipe);
+    setNewRecipe({
+      title: recipe.title,
+      description: recipe.description || '',
+      ingredients: recipe.ingredients || '',
+      instructions: recipe.instructions || '',
+      prepTime: recipe.prepTime || '',
+      cookTime: recipe.cookTime || '',
+      servings: recipe.servings || '',
+      category: recipe.category || ''
+    });
+    setIsModalVisible(true);
+  };
+
+  const filteredRecipes = recipes.filter(recipe =>
+    recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    recipe.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    recipe.ingredients.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderItem = ({ item }) => (
+    <Card style={styles.recipeCard}>
+      <View style={[styles.recipeHeader, I18nManager.isRTL && styles.rtlRecipeHeader]}>
+        <Text style={[styles.recipeTitle, I18nManager.isRTL && styles.rtlText]}>
+          {item.title}
+        </Text>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => startEdit(item)}
+          >
+            <MaterialIcons name="edit" size={24} color={theme.COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleDelete(item.id)}
+          >
+            <MaterialIcons name="delete" size={24} color={theme.COLORS.danger} />
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
-    );
-  };
+      </View>
 
-  const RecipeDetailModal = () => {
-    if (!selectedRecipe) return null;
-    
-    return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={!!selectedRecipe}
-        onRequestClose={() => setSelectedRecipe(null)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setSelectedRecipe(null)}
-              >
-                <MaterialIcons name="arrow-back" size={24} color={theme.COLORS.text} />
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.deleteButton}
-                onPress={() => handleDeleteRecipe(selectedRecipe.id)}
-              >
-                <MaterialIcons name="delete" size={24} color={theme.COLORS.danger} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.recipeDetailScroll}>
-              {selectedRecipe.imageUrl ? (
-                <Image 
-                  source={{ uri: selectedRecipe.imageUrl }} 
-                  style={styles.recipeDetailImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.recipeDetailPlaceholder}>
-                  <MaterialIcons name="restaurant" size={60} color={theme.COLORS.gray[400]} />
-                </View>
-              )}
-              
-              <View style={styles.recipeDetailContent}>
-                <Text style={styles.recipeDetailTitle}>{selectedRecipe.title}</Text>
-                
-                {selectedRecipe.description && (
-                  <Text style={styles.recipeDetailDescription}>
-                    {selectedRecipe.description}
-                  </Text>
-                )}
-                
-                <View style={styles.recipeDetailMeta}>
-                  {selectedRecipe.prepTime && (
-                    <View style={styles.recipeDetailMetaItem}>
-                      <MaterialIcons name="access-time" size={20} color={theme.COLORS.primary} />
-                      <View>
-                        <Text style={styles.recipeDetailMetaLabel}>Prep Time</Text>
-                        <Text style={styles.recipeDetailMetaValue}>{selectedRecipe.prepTime} min</Text>
-                      </View>
-                    </View>
-                  )}
-                  
-                  {selectedRecipe.cookTime && (
-                    <View style={styles.recipeDetailMetaItem}>
-                      <MaterialIcons name="whatshot" size={20} color={theme.COLORS.warning} />
-                      <View>
-                        <Text style={styles.recipeDetailMetaLabel}>Cook Time</Text>
-                        <Text style={styles.recipeDetailMetaValue}>{selectedRecipe.cookTime} min</Text>
-                      </View>
-                    </View>
-                  )}
-                  
-                  {selectedRecipe.servings && (
-                    <View style={styles.recipeDetailMetaItem}>
-                      <MaterialIcons name="people" size={20} color={theme.COLORS.success} />
-                      <View>
-                        <Text style={styles.recipeDetailMetaLabel}>Servings</Text>
-                        <Text style={styles.recipeDetailMetaValue}>{selectedRecipe.servings}</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-                
-                {selectedRecipe.ingredients && (
-                  <View style={styles.recipeDetailSection}>
-                    <Text style={styles.recipeDetailSectionTitle}>Ingredients</Text>
-                    <Text style={styles.recipeDetailText}>{selectedRecipe.ingredients}</Text>
-                  </View>
-                )}
-                
-                {selectedRecipe.instructions && (
-                  <View style={styles.recipeDetailSection}>
-                    <Text style={styles.recipeDetailSectionTitle}>Instructions</Text>
-                    <Text style={styles.recipeDetailText}>{selectedRecipe.instructions}</Text>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
+      {item.description && (
+        <Text style={[styles.recipeDescription, I18nManager.isRTL && styles.rtlText]}>
+          {item.description}
+        </Text>
+      )}
+
+      <View style={[styles.recipeDetails, I18nManager.isRTL && styles.rtlRecipeDetails]}>
+        {item.prepTime && (
+          <View style={[styles.detailItem, I18nManager.isRTL && styles.rtlDetailItem]}>
+            <MaterialIcons name="access-time" size={20} color={theme.COLORS.primary} />
+            <Text style={[styles.detailText, I18nManager.isRTL && styles.rtlDetailText]}>
+              {t('prep')}: {item.prepTime} {t('minutes')}
+            </Text>
           </View>
-        </SafeAreaView>
-      </Modal>
-    );
-  };
+        )}
 
-  const AddRecipeModal = () => {
-    return (
+        {item.cookTime && (
+          <View style={[styles.detailItem, I18nManager.isRTL && styles.rtlDetailItem]}>
+            <MaterialIcons name="microwave" size={20} color={theme.COLORS.primary} />
+            <Text style={[styles.detailText, I18nManager.isRTL && styles.rtlDetailText]}>
+              {t('cook')}: {item.cookTime} {t('minutes')}
+            </Text>
+          </View>
+        )}
+
+        {item.servings && (
+          <View style={[styles.detailItem, I18nManager.isRTL && styles.rtlDetailItem]}>
+            <MaterialIcons name="people" size={20} color={theme.COLORS.primary} />
+            <Text style={[styles.detailText, I18nManager.isRTL && styles.rtlDetailText]}>
+              {t('serves')}: {item.servings}
+            </Text>
+          </View>
+        )}
+      </View>
+    </Card>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={[styles.searchContainer, I18nManager.isRTL && styles.rtlSearchContainer]}>
+        <MaterialIcons name="search" size={24} color={theme.COLORS.gray[400]} />
+        <TextInput
+          style={[styles.searchInput, I18nManager.isRTL && styles.rtlSearchInput]}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder={t('searchRecipes')}
+          placeholderTextColor={theme.COLORS.gray[400]}
+          textAlign={I18nManager.isRTL ? 'right' : 'left'}
+        />
+      </View>
+
+      {recipes.length > 0 ? (
+        <FlatList
+          data={filteredRecipes}
+          renderItem={renderItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <View style={styles.emptyState}>
+          <MaterialIcons name="menu-book" size={64} color={theme.COLORS.gray[300]} />
+          <Text style={styles.emptyStateText}>{t('noRecipes')}</Text>
+          <Button
+            title={t('addYourFirstRecipe')}
+            onPress={() => {
+              resetForm();
+              setIsModalVisible(true);
+            }}
+          />
+        </View>
+      )}
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          resetForm();
+          setIsModalVisible(true);
+        }}
+      >
+        <MaterialIcons name="add" size={24} color={theme.COLORS.white} />
+      </TouchableOpacity>
+
       <Modal
+        visible={isModalVisible}
         animationType="slide"
         transparent={true}
-        visible={showAddModal}
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => setIsModalVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalContainer}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Recipe</Text>
+              <Text style={styles.modalTitle}>
+                {editingRecipe ? t('editRecipe') : t('addRecipe')}
+              </Text>
               <TouchableOpacity 
+                onPress={() => setIsModalVisible(false)}
                 style={styles.closeButton}
-                onPress={() => setShowAddModal(false)}
               >
                 <MaterialIcons name="close" size={24} color={theme.COLORS.text} />
               </TouchableOpacity>
             </View>
-            
-            <ScrollView style={styles.addRecipeForm}>
-              <Text style={styles.inputLabel}>Title *</Text>
+
+            <ScrollView style={styles.form}>
+              <Text style={styles.label}>{t('title')}</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
                 value={newRecipe.title}
-                onChangeText={(text) => setNewRecipe({...newRecipe, title: text})}
-                placeholder="Recipe title"
-                placeholderTextColor={theme.COLORS.gray[500]}
+                onChangeText={text => setNewRecipe({ ...newRecipe, title: text })}
+                placeholder={t('enterRecipeTitle')}
+                placeholderTextColor={theme.COLORS.gray[400]}
+                textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
-              
-              <Text style={styles.inputLabel}>Description</Text>
+
+              <Text style={styles.label}>{t('description')}</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, I18nManager.isRTL && styles.rtlInput]}
                 value={newRecipe.description}
-                onChangeText={(text) => setNewRecipe({...newRecipe, description: text})}
-                placeholder="Brief description of the recipe"
-                placeholderTextColor={theme.COLORS.gray[500]}
+                onChangeText={text => setNewRecipe({ ...newRecipe, description: text })}
+                placeholder={t('enterRecipeDescription')}
+                placeholderTextColor={theme.COLORS.gray[400]}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
+                textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
-              
-              <View style={styles.formRow}>
-                <View style={styles.formColumn}>
-                  <Text style={styles.inputLabel}>Prep Time (min)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={newRecipe.prepTime}
-                    onChangeText={(text) => setNewRecipe({...newRecipe, prepTime: text})}
-                    placeholder="30"
-                    placeholderTextColor={theme.COLORS.gray[500]}
-                    keyboardType="number-pad"
-                  />
-                </View>
-                
-                <View style={styles.formColumn}>
-                  <Text style={styles.inputLabel}>Cook Time (min)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={newRecipe.cookTime}
-                    onChangeText={(text) => setNewRecipe({...newRecipe, cookTime: text})}
-                    placeholder="45"
-                    placeholderTextColor={theme.COLORS.gray[500]}
-                    keyboardType="number-pad"
-                  />
-                </View>
-              </View>
-              
-              <View style={styles.formRow}>
-                <View style={styles.formColumn}>
-                  <Text style={styles.inputLabel}>Servings</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={newRecipe.servings}
-                    onChangeText={(text) => setNewRecipe({...newRecipe, servings: text})}
-                    placeholder="4"
-                    placeholderTextColor={theme.COLORS.gray[500]}
-                    keyboardType="number-pad"
-                  />
-                </View>
-                
-                <View style={styles.formColumn}>
-                  <Text style={styles.inputLabel}>Category</Text>
-                  <View style={styles.categoryContainer}>
-                    {['main', 'side', 'dessert', 'breakfast'].map(category => (
-                      <TouchableOpacity
-                        key={category}
-                        style={[
-                          styles.categoryButton,
-                          newRecipe.category === category && styles.selectedCategory
-                        ]}
-                        onPress={() => setNewRecipe({...newRecipe, category})}
-                      >
-                        <Text 
-                          style={[
-                            styles.categoryText,
-                            newRecipe.category === category && styles.selectedCategoryText
-                          ]}
-                        >
-                          {category.charAt(0).toUpperCase() + category.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </View>
-              
-              <Text style={styles.inputLabel}>Image URL</Text>
+
+              <Text style={styles.label}>{t('ingredients')}</Text>
               <TextInput
-                style={styles.input}
-                value={newRecipe.imageUrl}
-                onChangeText={(text) => setNewRecipe({...newRecipe, imageUrl: text})}
-                placeholder="https://example.com/image.jpg"
-                placeholderTextColor={theme.COLORS.gray[500]}
-              />
-              
-              <Text style={styles.inputLabel}>Ingredients</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, I18nManager.isRTL && styles.rtlInput]}
                 value={newRecipe.ingredients}
-                onChangeText={(text) => setNewRecipe({...newRecipe, ingredients: text})}
-                placeholder="List ingredients, one per line"
-                placeholderTextColor={theme.COLORS.gray[500]}
+                onChangeText={text => setNewRecipe({ ...newRecipe, ingredients: text })}
+                placeholder={t('enterIngredients')}
+                placeholderTextColor={theme.COLORS.gray[400]}
                 multiline
-                numberOfLines={5}
+                numberOfLines={4}
                 textAlignVertical="top"
+                textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
-              
-              <Text style={styles.inputLabel}>Instructions</Text>
+
+              <Text style={styles.label}>{t('instructions')}</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, I18nManager.isRTL && styles.rtlInput]}
                 value={newRecipe.instructions}
-                onChangeText={(text) => setNewRecipe({...newRecipe, instructions: text})}
-                placeholder="Step-by-step instructions"
-                placeholderTextColor={theme.COLORS.gray[500]}
+                onChangeText={text => setNewRecipe({ ...newRecipe, instructions: text })}
+                placeholder={t('enterInstructions')}
+                placeholderTextColor={theme.COLORS.gray[400]}
                 multiline
-                numberOfLines={8}
+                numberOfLines={6}
                 textAlignVertical="top"
+                textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
-              
-              <View style={styles.formActions}>
+
+              <View style={[styles.row, I18nManager.isRTL && styles.rtlRow]}>
+                <View style={styles.halfInput}>
+                  <Text style={styles.label}>{t('prepTime')}</Text>
+                  <TextInput
+                    style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+                    value={newRecipe.prepTime}
+                    onChangeText={text => setNewRecipe({ ...newRecipe, prepTime: text })}
+                    placeholder={t('minutes')}
+                    placeholderTextColor={theme.COLORS.gray[400]}
+                    keyboardType="numeric"
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                </View>
+
+                <View style={styles.halfInput}>
+                  <Text style={styles.label}>{t('cookTime')}</Text>
+                  <TextInput
+                    style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+                    value={newRecipe.cookTime}
+                    onChangeText={text => setNewRecipe({ ...newRecipe, cookTime: text })}
+                    placeholder={t('minutes')}
+                    placeholderTextColor={theme.COLORS.gray[400]}
+                    keyboardType="numeric"
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.row, I18nManager.isRTL && styles.rtlRow]}>
+                <View style={styles.halfInput}>
+                  <Text style={styles.label}>{t('servings')}</Text>
+                  <TextInput
+                    style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+                    value={newRecipe.servings}
+                    onChangeText={text => setNewRecipe({ ...newRecipe, servings: text })}
+                    placeholder={t('enterServings')}
+                    placeholderTextColor={theme.COLORS.gray[400]}
+                    keyboardType="numeric"
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                </View>
+
+                <View style={styles.halfInput}>
+                  <Text style={styles.label}>{t('category')}</Text>
+                  <TextInput
+                    style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+                    value={newRecipe.category}
+                    onChangeText={text => setNewRecipe({ ...newRecipe, category: text })}
+                    placeholder={t('enterCategory')}
+                    placeholderTextColor={theme.COLORS.gray[400]}
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.buttonContainer, I18nManager.isRTL && styles.rtlButtonContainer]}>
                 <Button
-                  title="Cancel"
+                  title={t('cancel')}
+                  onPress={() => setIsModalVisible(false)}
                   variant="outline"
-                  onPress={() => setShowAddModal(false)}
-                  style={styles.cancelButton}
+                  style={styles.button}
                 />
                 <Button
-                  title="Save Recipe"
-                  onPress={handleAddRecipe}
-                  loading={isLoading}
-                  disabled={!newRecipe.title.trim()}
-                  style={styles.saveButton}
+                  title={editingRecipe ? t('update') : t('save')}
+                  onPress={handleSave}
+                  style={styles.button}
                 />
               </View>
             </ScrollView>
           </View>
-        </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.background} />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Recipes</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => setShowAddModal(true)}
-        >
-          <MaterialIcons name="add" size={24} color={theme.COLORS.white} />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <MaterialIcons name="search" size={20} color={theme.COLORS.gray[500]} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search recipes..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={theme.COLORS.gray[500]}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <MaterialIcons name="close" size={20} color={theme.COLORS.gray[500]} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-      
-      <FlatList
-        data={filteredRecipes}
-        renderItem={renderRecipeCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.recipeList}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={fetchRecipes}
-            colors={[theme.COLORS.primary]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <MaterialIcons name="restaurant-menu" size={60} color={theme.COLORS.gray[400]} />
-            <Text style={styles.emptyStateTitle}>
-              {searchQuery ? 'No matching recipes found' : 'No recipes yet'}
-            </Text>
-            <Text style={styles.emptyStateText}>
-              {searchQuery 
-                ? 'Try a different search term or add a new recipe'
-                : 'Add your favorite recipes to get started'
-              }
-            </Text>
-            <Button
-              title="Add Your First Recipe"
-              onPress={() => setShowAddModal(true)}
-              style={styles.emptyStateButton}
-            />
-          </View>
-        }
-      />
-      
-      <RecipeDetailModal />
-      <AddRecipeModal />
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: theme.COLORS.background,
   },
-  header: {
+  searchContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.SPACING.md,
-    paddingVertical: theme.SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.COLORS.gray[200],
     backgroundColor: theme.COLORS.white,
-  },
-  headerTitle: {
-    fontSize: theme.FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-  },
-  addButton: {
-    backgroundColor: theme.COLORS.primary,
-    width: 40,
-    height: 40,
-    borderRadius: theme.BORDER_RADIUS.round,
-    justifyContent: 'center',
-    alignItems: 'center',
+    margin: theme.SPACING.md,
+    padding: theme.SPACING.sm,
+    borderRadius: theme.BORDER_RADIUS.md,
     ...theme.SHADOWS.small,
   },
-  searchContainer: {
-    padding: theme.SPACING.md,
-    backgroundColor: theme.COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.COLORS.gray[200],
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.COLORS.gray[100],
-    borderRadius: theme.BORDER_RADIUS.md,
-    paddingHorizontal: theme.SPACING.md,
-    paddingVertical: theme.SPACING.sm,
+  rtlSearchContainer: {
+    flexDirection: 'row-reverse',
   },
   searchInput: {
     flex: 1,
+    marginLeft: theme.SPACING.sm,
     fontSize: theme.FONT_SIZES.md,
     color: theme.COLORS.text,
-    marginLeft: theme.SPACING.sm,
   },
-  recipeList: {
-    paddingHorizontal: theme.SPACING.md,
-    paddingTop: theme.SPACING.sm,
-    paddingBottom: theme.SPACING.xl,
+  rtlSearchInput: {
+    marginLeft: 0,
+    marginRight: theme.SPACING.sm,
+    textAlign: 'right',
+  },
+  list: {
+    padding: theme.SPACING.md,
   },
   recipeCard: {
-    backgroundColor: theme.COLORS.white,
-    borderRadius: theme.BORDER_RADIUS.lg,
     marginBottom: theme.SPACING.md,
-    overflow: 'hidden',
-    ...theme.SHADOWS.medium,
   },
-  recipeCardContent: {
+  recipeHeader: {
     flexDirection: 'row',
-  },
-  recipeImage: {
-    width: 100,
-    height: 100,
-  },
-  recipePlaceholder: {
-    width: 100,
-    height: 100,
-    backgroundColor: theme.COLORS.gray[200],
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: theme.SPACING.sm,
   },
-  recipeInfo: {
-    flex: 1,
-    padding: theme.SPACING.md,
+  rtlRecipeHeader: {
+    flexDirection: 'row-reverse',
   },
   recipeTitle: {
     fontSize: theme.FONT_SIZES.lg,
     fontWeight: 'bold',
     color: theme.COLORS.text,
-    marginBottom: theme.SPACING.xs,
+    flex: 1,
+  },
+  rtlText: {
+    textAlign: 'right',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+  },
+  actionButton: {
+    padding: theme.SPACING.xs,
+    marginLeft: theme.SPACING.xs,
   },
   recipeDescription: {
-    fontSize: theme.FONT_SIZES.sm,
-    color: theme.COLORS.gray[700],
-    marginBottom: theme.SPACING.sm,
+    fontSize: theme.FONT_SIZES.md,
+    color: theme.COLORS.gray[600],
+    marginBottom: theme.SPACING.md,
   },
-  recipeMetaContainer: {
+  recipeDetails: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  recipeMeta: {
+  rtlRecipeDetails: {
+    flexDirection: 'row-reverse',
+  },
+  detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: theme.SPACING.md,
+    marginBottom: theme.SPACING.sm,
   },
-  recipeMetaText: {
-    fontSize: theme.FONT_SIZES.xs,
-    color: theme.COLORS.gray[600],
+  rtlDetailItem: {
+    flexDirection: 'row-reverse',
+    marginRight: 0,
+    marginLeft: theme.SPACING.md,
+  },
+  detailText: {
     marginLeft: theme.SPACING.xs,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.SPACING.xl,
-    marginTop: theme.SPACING.xl,
-  },
-  emptyStateTitle: {
-    fontSize: theme.FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginTop: theme.SPACING.md,
-    marginBottom: theme.SPACING.xs,
-  },
-  emptyStateText: {
-    fontSize: theme.FONT_SIZES.md,
+    fontSize: theme.FONT_SIZES.sm,
     color: theme.COLORS.gray[600],
-    textAlign: 'center',
-    marginBottom: theme.SPACING.lg,
   },
-  emptyStateButton: {
-    marginTop: theme.SPACING.md,
+  rtlDetailText: {
+    marginLeft: 0,
+    marginRight: theme.SPACING.xs,
+  },
+  fab: {
+    position: 'absolute',
+    right: theme.SPACING.lg,
+    bottom: theme.SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...theme.SHADOWS.large,
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: theme.COLORS.white,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    flex: 1,
+    backgroundColor: theme.COLORS.white,
+    borderTopLeftRadius: theme.BORDER_RADIUS.lg,
+    borderTopRightRadius: theme.BORDER_RADIUS.lg,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -651,83 +526,13 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: theme.SPACING.xs,
   },
-  deleteButton: {
-    padding: theme.SPACING.xs,
-  },
-  recipeDetailScroll: {
-    flex: 1,
-  },
-  recipeDetailImage: {
-    width: '100%',
-    height: 250,
-  },
-  recipeDetailPlaceholder: {
-    width: '100%',
-    height: 200,
-    backgroundColor: theme.COLORS.gray[200],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  recipeDetailContent: {
+  form: {
     padding: theme.SPACING.md,
   },
-  recipeDetailTitle: {
-    fontSize: theme.FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginBottom: theme.SPACING.md,
-  },
-  recipeDetailDescription: {
-    fontSize: theme.FONT_SIZES.md,
-    color: theme.COLORS.gray[700],
-    marginBottom: theme.SPACING.lg,
-    lineHeight: 22,
-  },
-  recipeDetailMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: theme.SPACING.lg,
-    paddingVertical: theme.SPACING.md,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: theme.COLORS.gray[200],
-  },
-  recipeDetailMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  recipeDetailMetaLabel: {
-    fontSize: theme.FONT_SIZES.xs,
-    color: theme.COLORS.gray[600],
-    marginLeft: theme.SPACING.xs,
-  },
-  recipeDetailMetaValue: {
-    fontSize: theme.FONT_SIZES.md,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginLeft: theme.SPACING.xs,
-  },
-  recipeDetailSection: {
-    marginBottom: theme.SPACING.lg,
-  },
-  recipeDetailSectionTitle: {
-    fontSize: theme.FONT_SIZES.lg,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginBottom: theme.SPACING.sm,
-  },
-  recipeDetailText: {
-    fontSize: theme.FONT_SIZES.md,
-    color: theme.COLORS.gray[800],
-    lineHeight: 24,
-  },
-  addRecipeForm: {
-    padding: theme.SPACING.md,
-  },
-  inputLabel: {
+  label: {
     fontSize: theme.FONT_SIZES.md,
     fontWeight: '600',
-    color: theme.COLORS.gray[700],
+    color: theme.COLORS.text,
     marginBottom: theme.SPACING.xs,
     marginTop: theme.SPACING.md,
   },
@@ -740,56 +545,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.COLORS.gray[300],
   },
+  rtlInput: {
+    textAlign: 'right',
+  },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  formRow: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginHorizontal: -theme.SPACING.xs,
   },
-  formColumn: {
+  rtlRow: {
+    flexDirection: 'row-reverse',
+  },
+  halfInput: {
     flex: 1,
-    marginRight: theme.SPACING.sm,
+    marginHorizontal: theme.SPACING.xs,
   },
-  formActions: {
+  buttonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginTop: theme.SPACING.lg,
     marginBottom: theme.SPACING.xl,
   },
-  cancelButton: {
+  rtlButtonContainer: {
+    flexDirection: 'row-reverse',
+  },
+  button: {
     flex: 1,
-    marginRight: theme.SPACING.sm,
+    marginHorizontal: theme.SPACING.xs,
   },
-  saveButton: {
+  emptyState: {
     flex: 1,
-    marginLeft: theme.SPACING.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.SPACING.xl,
   },
-  categoryContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  categoryButton: {
-    backgroundColor: theme.COLORS.gray[100],
-    paddingVertical: theme.SPACING.xs,
-    paddingHorizontal: theme.SPACING.sm,
-    borderRadius: theme.BORDER_RADIUS.md,
-    marginRight: theme.SPACING.xs,
-    marginBottom: theme.SPACING.xs,
-    borderWidth: 1,
-    borderColor: theme.COLORS.gray[300],
-  },
-  selectedCategory: {
-    backgroundColor: theme.COLORS.primary,
-    borderColor: theme.COLORS.primary,
-  },
-  categoryText: {
-    fontSize: theme.FONT_SIZES.sm,
-    color: theme.COLORS.text,
-  },
-  selectedCategoryText: {
-    color: theme.COLORS.white,
+  emptyStateText: {
+    fontSize: theme.FONT_SIZES.lg,
+    color: theme.COLORS.gray[500],
+    marginVertical: theme.SPACING.lg,
+    textAlign: 'center',
   },
 });
 

@@ -1,261 +1,182 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  I18nManager,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import theme from './theme';
+import { t } from '../locales/i18n';
 
-const DaySelector = ({ 
-  selectedDay, 
-  onSelectDay, 
+const DaySelector = ({
+  selectedDay,
+  onSelectDay,
   onAddMeal,
-  compact = false,
-  showAddButton = true,
+  showAddButton = false,
   isNextWeek = false,
-  daysOfWeek = null,
+  daysOfWeek = [],
 }) => {
-  // Default days of week if not provided
-  const defaultDaysOfWeek = [
-    { id: 'Monday', short: 'Mon' },
-    { id: 'Tuesday', short: 'Tue' },
-    { id: 'Wednesday', short: 'Wed' },
-    { id: 'Thursday', short: 'Thu' },
-    { id: 'Friday', short: 'Fri' },
-    { id: 'Saturday', short: 'Sat' },
-    { id: 'Sunday', short: 'Sun' },
-  ];
+  const scrollViewRef = useRef(null);
+  const [dayLayouts, setDayLayouts] = useState({});
 
-  // Use provided days or default
-  const days = daysOfWeek ? 
-    daysOfWeek.map(day => ({ id: day, short: day.substring(0, 3) })) : 
-    defaultDaysOfWeek;
-
-  // Get current day of week
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-
-  // Completely rewritten date calculation function
-  const getDayDate = (dayName) => {
-    // Get current date
-    const now = new Date();
-    
-    // Map day names to their index values (0-6)
-    const dayIndices = {
-      'Sunday': 0,
-      'Monday': 1,
-      'Tuesday': 2,
-      'Wednesday': 3,
-      'Thursday': 4,
-      'Friday': 5,
-      'Saturday': 6
-    };
-    
-    // Get the current day of the week (0-6)
-    const currentDayIndex = now.getDay();
-    
-    // Get the target day index
-    const targetDayIndex = dayIndices[dayName];
-    
-    // Calculate the difference between target day and current day
-    let daysDifference = targetDayIndex - currentDayIndex;
-    
-    // Adjust if the target day is earlier in the week
-    if (daysDifference < 0) {
-      daysDifference += 7;
-    }
-    
-    // Create a new date for the target day in the current week
-    const targetDate = new Date(now);
-    targetDate.setDate(now.getDate() + daysDifference);
-    
-    // If we're looking at next week, add 7 days
-    if (isNextWeek) {
-      targetDate.setDate(targetDate.getDate() + 7);
-    }
-    
-    // Return the day of the month
-    return targetDate.getDate();
+  const translateDay = (day) => {
+    return t(day.toLowerCase());
   };
 
+  const getTodayString = () => new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+  useEffect(() => {
+    const todayString = getTodayString();
+    const currentIsToday = (day) => day === todayString && !isNextWeek;
+
+    if (scrollViewRef.current && daysOfWeek.length > 0) {
+      const todayEntry = daysOfWeek.find(day => currentIsToday(day));
+
+      if (todayEntry) {
+        const layoutOfToday = dayLayouts[todayEntry];
+        if (layoutOfToday && typeof layoutOfToday.x === 'number') {
+          scrollViewRef.current.scrollTo({ x: layoutOfToday.x, animated: true });
+        }
+      }
+    }
+  }, [daysOfWeek, dayLayouts, isNextWeek]);
+
   return (
-    <View style={styles.outerContainer}>
-      <View style={styles.container}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          fadingEdgeLength={50}
-          decelerationRate="fast"
-          snapToInterval={120}
-          snapToAlignment="start"
-          overScrollMode="never"
-        >
-          {days.map((day) => {
-            const isSelected = selectedDay === day.id;
-            const isToday = !isNextWeek && today === day.id;
-            
-            return (
-              <View key={day.id} style={styles.dayTabWrapper}>
+    <View style={styles.container}>
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {daysOfWeek.map((day, index) => {
+          const todayString = getTodayString();
+          const isCurrentToday = day === todayString && !isNextWeek;
+          const isSelected = selectedDay === day;
+
+          return (
+            <TouchableOpacity
+              key={day}
+              style={[
+                styles.dayButton,
+                isCurrentToday && styles.todayButtonHighlight,
+                isSelected && styles.selectedDayButton,
+              ]}
+              onPress={() => onSelectDay(day)}
+              activeOpacity={0.7}
+              onLayout={(event) => {
+                const { x } = event.nativeEvent.layout;
+                if (!dayLayouts[day] || dayLayouts[day].x !== x) {
+                  setDayLayouts(prevLayouts => ({
+                    ...prevLayouts,
+                    [day]: { x },
+                  }));
+                }
+              }}
+            >
+              <Text
+                style={[
+                  styles.dayText,
+                  isCurrentToday && !isSelected && styles.todayDayText,
+                  isSelected && styles.selectedDayText,
+                  I18nManager.isRTL && styles.rtlText
+                ]}
+              >
+                {translateDay(day)}
+              </Text>
+              {isCurrentToday && !isSelected && <View style={styles.todayDot} />}
+              {showAddButton && (
                 <TouchableOpacity
                   style={[
-                    styles.dayTab,
-                    isSelected && styles.selectedDayTab,
-                    compact && styles.compactDayTab,
+                    styles.addButton,
+                    I18nManager.isRTL ? styles.rtlAddButtonPosition : styles.ltrAddButtonPosition
                   ]}
-                  onPress={() => onSelectDay(day.id)}
-                  activeOpacity={0.7}
+                  onPress={() => onAddMeal && onAddMeal(day)}
                 >
-                  <View style={styles.dayNameContainer}>
-                    <Text style={[
-                      styles.dayName,
-                      isSelected && styles.selectedDayText,
-                      compact && styles.compactDayText,
-                    ]}>
-                      {compact ? day.short : day.id}
-                    </Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.dateCircle,
-                    isSelected && styles.selectedDateCircle,
-                    isToday && styles.todayCircle,
-                  ]}>
-                    <Text style={[
-                      styles.dateText,
-                      isSelected && styles.selectedDateText,
-                      isToday && styles.todayText,
-                    ]}>
-                      {getDayDate(day.id)}
-                    </Text>
-                  </View>
-                  
-                  {showAddButton && isSelected && (
-                    <TouchableOpacity
-                      style={styles.addButton}
-                      onPress={() => onAddMeal && onAddMeal(day.id)}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialIcons name="add" size={18} color={theme.COLORS.white} />
-                    </TouchableOpacity>
-                  )}
+                  <MaterialIcons
+                    name="add-circle-outline"
+                    size={22}
+                    color={isSelected ? 'rgba(255, 255, 255, 0.7)' : 'rgba(94, 114, 228, 0.7)'}
+                  />
                 </TouchableOpacity>
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    width: '100%',
-    paddingVertical: theme.SPACING.md,
-  },
   container: {
-    minHeight: 150,
-    maxHeight: 180,
     paddingVertical: theme.SPACING.sm,
+    marginBottom: theme.SPACING.md,
   },
   scrollContent: {
     paddingHorizontal: theme.SPACING.md,
-    paddingVertical: theme.SPACING.md,
-  },
-  dayTabWrapper: {
-    padding: theme.SPACING.sm,
-    marginRight: theme.SPACING.sm,
-  },
-  dayTab: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.SPACING.lg,
-    paddingHorizontal: theme.SPACING.md,
-    borderRadius: theme.BORDER_RADIUS.lg,
+  },
+  dayButton: {
+    minWidth: 75,
+    height: 75,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: theme.COLORS.white,
-    ...theme.SHADOWS.small,
-    minWidth: 110,
-    minHeight: 130,
+    borderRadius: theme.BORDER_RADIUS.lg,
+    marginHorizontal: theme.SPACING.xs,
+    padding: theme.SPACING.sm,
+    ...(theme && theme.SHADOWS && theme.SHADOWS.small ? theme.SHADOWS.small : {}),
     borderWidth: 1,
     borderColor: theme.COLORS.gray[200],
   },
-  selectedDayTab: {
+  todayButtonHighlight: {
+    borderColor: theme.COLORS.secondary,
+    borderWidth: 2,
+  },
+  selectedDayButton: {
     backgroundColor: theme.COLORS.primary,
-    borderColor: theme.COLORS.primary,
-    ...theme.SHADOWS.medium,
-    transform: [{ scale: 1.05 }],
+    borderColor: theme.COLORS.dark,
+    ...(theme && theme.SHADOWS && theme.SHADOWS.medium ? theme.SHADOWS.medium : {}),
   },
-  compactDayTab: {
-    minWidth: 90,
-    minHeight: 110,
-    paddingVertical: theme.SPACING.md,
-    paddingHorizontal: theme.SPACING.sm,
-  },
-  dayNameContainer: {
-    width: '100%',
-    paddingVertical: theme.SPACING.xs,
-    paddingHorizontal: theme.SPACING.sm,
-    marginBottom: theme.SPACING.sm,
-  },
-  dayName: {
-    fontSize: theme.FONT_SIZES.lg,
-    fontWeight: '700',
+  dayText: {
+    fontSize: theme.FONT_SIZES.md,
+    fontWeight: '600',
     color: theme.COLORS.text,
     textAlign: 'center',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
+  },
+  todayDayText: {
+    color: theme.COLORS.secondary,
+    fontWeight: 'bold',
   },
   selectedDayText: {
     color: theme.COLORS.white,
+    fontWeight: 'bold',
   },
-  compactDayText: {
-    fontSize: theme.FONT_SIZES.md,
-  },
-  dateCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.COLORS.gray[200],
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.COLORS.gray[300],
-    marginTop: theme.SPACING.xs,
-  },
-  selectedDateCircle: {
-    backgroundColor: theme.COLORS.white,
-    borderColor: 'rgba(255,255,255,0.5)',
-  },
-  todayCircle: {
-    backgroundColor: theme.COLORS.warning,
-    borderColor: theme.COLORS.warning,
-  },
-  dateText: {
-    fontSize: theme.FONT_SIZES.lg,
-    fontWeight: '800',
-    color: theme.COLORS.text,
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-  },
-  selectedDateText: {
-    color: theme.COLORS.primary,
-  },
-  todayText: {
-    color: theme.COLORS.white,
+  todayDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.COLORS.secondary,
+    position: 'absolute',
+    bottom: theme.SPACING.xs,
   },
   addButton: {
     position: 'absolute',
-    top: -14,
-    right: -14,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: theme.COLORS.success,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...theme.SHADOWS.medium,
-    borderWidth: 2,
-    borderColor: theme.COLORS.white,
-    zIndex: 10,
-    elevation: 6,
+    padding: 2,
   },
+  ltrAddButtonPosition: {
+    top: theme.SPACING.xs - 2,
+    right: theme.SPACING.xs - 2,
+  },
+  rtlAddButtonPosition: {
+    top: theme.SPACING.xs - 2,
+    left: theme.SPACING.xs - 2,
+  },
+  rtlText: {},
 });
 
-export default DaySelector; 
+export default DaySelector;

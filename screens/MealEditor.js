@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   TextInput, 
@@ -6,294 +6,187 @@ import {
   Text, 
   StyleSheet, 
   KeyboardAvoidingView, 
-  Platform, 
-  Modal, 
-  Animated,
+  Platform,
+  Modal,
   ScrollView,
-  Keyboard,
-  Pressable
+  I18nManager,
+  Alert
 } from 'react-native';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { MaterialIcons } from '@expo/vector-icons';
-import { db } from '../App';
 import theme from '../components/theme';
 import Button from '../components/Button';
+import { t } from '../locales/i18n';
 
-const MealEditor = ({ onSave, initialMeal, selectedDay, onCancel, availableMealTypes }) => {
+const MealEditor = ({ 
+  isVisible = true,
+  onSave, 
+  onCancel, 
+  initialMeal = null,
+  selectedDay,
+  availableMealTypes = []
+}) => {
   const [meal, setMeal] = useState(initialMeal?.meal || '');
   const [notes, setNotes] = useState(initialMeal?.notes || '');
   const [mealType, setMealType] = useState(initialMeal?.type || '');
   const [isLoading, setIsLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(true);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  
-  const scaleValue = useRef(new Animated.Value(0)).current;
-
-  // Default meal types if none provided from settings
-  const defaultMealTypes = [
-    { id: 'breakfast', label: 'Breakfast', icon: 'free-breakfast' },
-    { id: 'lunch', label: 'Lunch', icon: 'restaurant' },
-    { id: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
-    { id: 'snack', label: 'Snack', icon: 'icecream' },
-  ];
-  
-  // Use available meal types from settings or default
-  const mealTypes = availableMealTypes || defaultMealTypes;
 
   useEffect(() => {
     if (initialMeal) {
       setMeal(initialMeal.meal || '');
       setNotes(initialMeal.notes || '');
       setMealType(initialMeal.type || '');
-    } else {
-      // Set default meal type to first available type
-      if (mealTypes.length > 0 && !mealType) {
-        setMealType(mealTypes[0].id);
-      }
+    } else if (availableMealTypes.length > 0) {
+      setMealType(availableMealTypes[0].id);
     }
-    
-    // Reset and start the animation
-    scaleValue.setValue(0);
-    Animated.spring(scaleValue, {
-      toValue: 1,
-      friction: 7,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-    
-    // Keyboard listeners
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-      }
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-      }
-    );
+  }, [initialMeal, availableMealTypes]);
 
-    // Clean up listeners
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, [initialMeal, mealTypes]);
+  const handleSave = async () => {
+    if (!meal.trim()) {
+      Alert.alert(t('error'), t('mealNameRequired'));
+      return;
+    }
 
-  const handleClose = () => {
-    // Animate out before closing
-    Animated.timing(scaleValue, {
-      toValue: 0,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      if (onCancel) {
-        onCancel();
-      } else {
-        onSave();
-      }
-    });
-  };
+    if (!mealType) {
+      Alert.alert(t('error'), t('mealTypeRequired'));
+      return;
+    }
 
-  const saveMeal = async () => {
-    if (!meal.trim()) return;
-    
     setIsLoading(true);
     try {
       const mealData = {
+        id: initialMeal?.id,
         day: selectedDay,
         meal: meal.trim(),
         notes: notes.trim(),
         type: mealType,
-        createdAt: new Date().toISOString(),
       };
 
-      if (initialMeal) {
-        // Update existing meal
-        const mealRef = doc(db, 'meals', initialMeal.id);
-        await updateDoc(mealRef, mealData);
-      } else {
-        // Add new meal
-        await addDoc(collection(db, 'meals'), mealData);
-      }
-      
+      await onSave(mealData);
       setMeal('');
       setNotes('');
-      setMealType(mealTypes.length > 0 ? mealTypes[0].id : '');
-      
-      // Animate out before saving
-      Animated.timing(scaleValue, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }).start(() => {
-        onSave();
-      });
+      setMealType(availableMealTypes.length > 0 ? availableMealTypes[0].id : '');
     } catch (error) {
       console.error('Error saving meal:', error);
+      Alert.alert(t('error'), t('saveMealError'));
+    } finally {
       setIsLoading(false);
     }
   };
 
-  // Function to handle background press - only dismiss keyboard
-  const handleBackgroundPress = () => {
-    Keyboard.dismiss();
-  };
-
   return (
     <Modal
-      animationType="fade"
+      visible={isVisible}
+      animationType="slide"
       transparent={true}
-      visible={modalVisible}
-      onRequestClose={handleClose}
+      onRequestClose={onCancel}
     >
-      <View style={styles.modalOverlay}>
-        <Pressable 
-          style={styles.backgroundDismiss} 
-          onPress={handleBackgroundPress}
-        >
-          <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
-          >
-            <Pressable>
-              <Animated.View 
-                style={[
-                  styles.card,
-                  { 
-                    transform: [{ scale: scaleValue }],
-                    opacity: scaleValue
-                  }
-                ]}
-              >
-                <View style={styles.header}>
-                  <Text style={styles.title}>
-                    {initialMeal ? 'Edit Meal' : 'Add New Meal'}
-                  </Text>
-                  <TouchableOpacity 
-                    style={styles.closeButton} 
-                    onPress={handleClose}
-                  >
-                    <MaterialIcons name="close" size={24} color={theme.COLORS.gray[600]} />
-                  </TouchableOpacity>
-                </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        <View style={styles.contentContainer}>
+          <View style={styles.header}>
+            <Text style={styles.title}>
+              {initialMeal ? t('editMeal') : t('addMeal')}
+            </Text>
+            <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+              <MaterialIcons name="close" size={24} color={theme.COLORS.text} />
+            </TouchableOpacity>
+          </View>
 
-                <ScrollView 
-                  style={styles.scrollContainer}
-                  keyboardShouldPersistTaps="always"
-                  contentContainerStyle={styles.scrollContentContainer}
+          <ScrollView style={styles.form}>
+            <Text style={styles.label}>{t('day')}</Text>
+            <View style={styles.dayDisplay}>
+              <MaterialIcons name="event" size={24} color={theme.COLORS.primary} />
+              <Text style={styles.dayText}>{selectedDay}</Text>
+            </View>
+
+            <Text style={styles.label}>{t('mealType')}</Text>
+            <View style={styles.mealTypeContainer}>
+              {availableMealTypes.map((type) => (
+                <TouchableOpacity
+                  key={type.id}
+                  style={[
+                    styles.mealTypeButton,
+                    mealType === type.id && styles.selectedMealType,
+                    I18nManager.isRTL && styles.rtlMealTypeButton
+                  ]}
+                  onPress={() => setMealType(type.id)}
                 >
-                  <Text style={styles.label}>Day</Text>
-                  <View style={styles.dayContainer}>
-                    <MaterialIcons name="event" size={24} color={theme.COLORS.primary} />
-                    <Text style={styles.dayText}>{selectedDay}</Text>
-                  </View>
-
-                  {mealTypes.length > 0 && (
-                    <>
-                      <Text style={styles.label}>Meal Type</Text>
-                      <View style={styles.mealTypeContainer}>
-                        {mealTypes.map((type) => (
-                          <TouchableOpacity
-                            key={type.id}
-                            style={[
-                              styles.mealTypeButton,
-                              mealType === type.id && styles.selectedMealType,
-                            ]}
-                            onPress={() => setMealType(type.id)}
-                          >
-                            <MaterialIcons 
-                              name={type.icon} 
-                              size={24} 
-                              color={mealType === type.id ? theme.COLORS.white : theme.COLORS.primary} 
-                            />
-                            <Text 
-                              style={[
-                                styles.mealTypeText,
-                                mealType === type.id && styles.selectedMealTypeText,
-                              ]}
-                            >
-                              {type.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  )}
-
-                  <Text style={styles.label}>Meal Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="What are you planning to eat?"
-                    value={meal}
-                    onChangeText={setMeal}
-                    placeholderTextColor={theme.COLORS.gray[500]}
+                  <MaterialIcons 
+                    name={type.icon || 'restaurant'} 
+                    size={24} 
+                    color={mealType === type.id ? theme.COLORS.white : theme.COLORS.primary} 
                   />
-
-                  <Text style={styles.label}>Notes (Optional)</Text>
-                  <TextInput
+                  <Text 
                     style={[
-                      styles.input, 
-                      styles.notesInput,
-                      keyboardVisible && styles.notesInputKeyboardVisible
+                      styles.mealTypeText,
+                      mealType === type.id && styles.selectedMealTypeText,
+                      I18nManager.isRTL && styles.rtlText
                     ]}
-                    placeholder="Add ingredients, recipe link, or other notes"
-                    value={notes}
-                    onChangeText={setNotes}
-                    multiline
-                    numberOfLines={keyboardVisible ? 2 : 4}
-                    textAlignVertical="top"
-                    placeholderTextColor={theme.COLORS.gray[500]}
-                  />
-                </ScrollView>
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-                <View style={styles.buttonContainer}>
-                  <Button
-                    title="Cancel"
-                    variant="outline"
-                    onPress={handleClose}
-                    style={styles.cancelButton}
-                  />
-                  <Button
-                    title={initialMeal ? 'Update' : 'Save'}
-                    onPress={saveMeal}
-                    loading={isLoading}
-                    disabled={!meal.trim() || !mealType}
-                    style={styles.saveButton}
-                  />
-                </View>
-              </Animated.View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </View>
+            <Text style={styles.label}>{t('mealName')}</Text>
+            <TextInput
+              style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+              value={meal}
+              onChangeText={setMeal}
+              placeholder={t('enterMealName')}
+              placeholderTextColor={theme.COLORS.gray[400]}
+              textAlign={I18nManager.isRTL ? 'right' : 'left'}
+            />
+
+            <Text style={styles.label}>{t('notesOptional')}</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, I18nManager.isRTL && styles.rtlInput]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder={t('addNotes')}
+              placeholderTextColor={theme.COLORS.gray[400]}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              textAlign={I18nManager.isRTL ? 'right' : 'left'}
+            />
+
+            <View style={[styles.buttonContainer, I18nManager.isRTL && styles.rtlButtonContainer]}>
+              <Button
+                title={t('cancel')}
+                onPress={onCancel}
+                variant="outline"
+                style={styles.button}
+              />
+              <Button
+                title={initialMeal ? t('update') : t('save')}
+                onPress={handleSave}
+                loading={isLoading}
+                disabled={!meal.trim() || !mealType}
+                style={styles.button}
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  backgroundDismiss: {
-    flex: 1,
-  },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  card: {
-    width: '100%',
+  contentContainer: {
     backgroundColor: theme.COLORS.white,
-    borderRadius: theme.BORDER_RADIUS.lg,
-    ...theme.SHADOWS.large,
-    maxHeight: '85%',
+    borderTopLeftRadius: theme.BORDER_RADIUS.lg,
+    borderTopRightRadius: theme.BORDER_RADIUS.lg,
+    maxHeight: '90%',
   },
   header: {
     flexDirection: 'row',
@@ -311,12 +204,8 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: theme.SPACING.xs,
   },
-  scrollContainer: {
+  form: {
     padding: theme.SPACING.md,
-    maxHeight: 400,
-  },
-  scrollContentContainer: {
-    paddingBottom: theme.SPACING.lg,
   },
   label: {
     fontSize: theme.FONT_SIZES.md,
@@ -325,7 +214,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.SPACING.xs,
     marginTop: theme.SPACING.md,
   },
-  dayContainer: {
+  dayDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.COLORS.gray[100],
@@ -351,16 +240,24 @@ const styles = StyleSheet.create({
     borderRadius: theme.BORDER_RADIUS.md,
     marginRight: theme.SPACING.sm,
     marginBottom: theme.SPACING.sm,
-    minWidth: 100,
+    minWidth: 120,
+  },
+  rtlMealTypeButton: {
+    flexDirection: 'row-reverse',
+    marginRight: 0,
+    marginLeft: theme.SPACING.sm,
   },
   selectedMealType: {
     backgroundColor: theme.COLORS.primary,
   },
   mealTypeText: {
-    fontSize: theme.FONT_SIZES.sm,
-    fontWeight: '600',
+    fontSize: theme.FONT_SIZES.md,
     color: theme.COLORS.text,
-    marginLeft: theme.SPACING.xs,
+    marginLeft: theme.SPACING.sm,
+  },
+  rtlText: {
+    marginLeft: 0,
+    marginRight: theme.SPACING.sm,
   },
   selectedMealTypeText: {
     color: theme.COLORS.white,
@@ -374,27 +271,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.COLORS.gray[300],
   },
-  notesInput: {
+  rtlInput: {
+    textAlign: 'right',
+  },
+  textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
-  },
-  notesInputKeyboardVisible: {
-    minHeight: 60,
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: theme.SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.COLORS.gray[200],
+    marginTop: theme.SPACING.lg,
+    marginBottom: theme.SPACING.xl,
   },
-  cancelButton: {
-    flex: 1,
-    marginRight: theme.SPACING.sm,
+  rtlButtonContainer: {
+    flexDirection: 'row-reverse',
   },
-  saveButton: {
+  button: {
     flex: 1,
-    marginLeft: theme.SPACING.sm,
+    marginHorizontal: theme.SPACING.xs,
   },
 });
 
