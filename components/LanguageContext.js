@@ -1,8 +1,7 @@
 import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
 import { I18nManager, View, ActivityIndicator } from 'react-native';
 import { setLanguage as setI18nLanguage, getCurrentLang, onLanguageChange, loadTranslations } from '../locales/i18n';
-// theme import is not used in the loading view anymore, but keep if used elsewhere or for future
-// import theme from './theme'; 
+import theme from './theme'; // Assuming theme.js is in the same directory or path is adjusted
 
 const LanguageContext = createContext();
 
@@ -10,7 +9,6 @@ export const LanguageProvider = ({ children }) => {
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLang());
   const [isRTL, setIsRTL] = useState(getCurrentLang() === 'ar');
   const [isContextLoading, setIsContextLoading] = useState(true);
-  const [providerKey, setProviderKey] = useState(0); // Key for re-rendering Provider
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -27,17 +25,12 @@ export const LanguageProvider = ({ children }) => {
     const cleanup = onLanguageChange((lang, reloadRequired) => {
       setCurrentLanguage(lang);
       setIsRTL(lang === 'ar');
-      if (reloadRequired) {
-        // Increment key to force re-render of Provider and its children
-        setProviderKey(prevKey => prevKey + 1);
-      }
     });
     return cleanup;
-  }, []); // This effect runs once on mount
+  }, []);
 
   const setLanguageContext = useCallback(async (lang) => {
-    // setI18nLanguage will trigger onLanguageChange, which updates state and providerKey
-    const result = await setI18nLanguage(lang); 
+    const result = await setI18nLanguage(lang);
     return result;
   }, []);
 
@@ -50,10 +43,7 @@ export const LanguageProvider = ({ children }) => {
   }
 
   return (
-    <LanguageContext.Provider 
-      key={providerKey} // Add key here
-      value={{ currentLanguage, setLanguage: setLanguageContext, isRTL, isContextLoading }}
-    >
+    <LanguageContext.Provider value={{ currentLanguage, setLanguage: setLanguageContext, isRTL, isContextLoading }}>
       {children}
     </LanguageContext.Provider>
   );

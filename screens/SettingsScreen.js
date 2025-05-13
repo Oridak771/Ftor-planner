@@ -10,8 +10,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  I18nManager,
-  ActivityIndicator // Import ActivityIndicator
+  I18nManager
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -22,6 +21,7 @@ import { t, getCurrentLang, getLangs, setLanguage, loadTranslations } from '../l
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useLanguage } from '../components/LanguageContext';
+import * as Updates from 'expo-updates';
 
 const SettingsScreen = () => {
   const [isVegetarian, setIsVegetarian] = useState(false);
@@ -38,7 +38,6 @@ const SettingsScreen = () => {
   const [language, setLangState] = useState(getCurrentLang());
   const { currentLanguage, setLanguage: setAppLanguage } = useLanguage();
   const [showLanguageModal, setShowLanguageModal] = useState(false);
-  const [isChangingLanguage, setIsChangingLanguage] = useState(false); // Add loading state
 
   const languageOptions = [
     { code: 'en', name: 'English', icon: '🇬🇧' },
@@ -222,24 +221,33 @@ const SettingsScreen = () => {
   };
 
   const handleLanguageChange = async (langCode) => {
-    if (isChangingLanguage) return; // Prevent double taps
-
-    setIsChangingLanguage(true);
     try {
       const result = await setAppLanguage(langCode);
 
-      if (result === true) {
+      if (result === 'reload') {
+        setShowLanguageModal(false); // Close modal before showing alert
+        Alert.alert(
+          t('restartRequired'),
+          t('restartMessage'),
+          [
+            {
+              text: t('restart'),
+              onPress: () => {
+                Updates.reloadAsync();
+              }
+            }
+          ]
+        );
+      } else if (result === true) {
         setShowLanguageModal(false);
-      } else if (result === false) {
+      } else {
+        setShowLanguageModal(false);
         Alert.alert(t('error'), t('languageChangeError'));
-        setShowLanguageModal(false);
       }
     } catch (error) {
       console.error('Error changing language in SettingsScreen:', error);
-      Alert.alert(t('error'), t('languageChangeError'));
       setShowLanguageModal(false);
-    } finally {
-      setIsChangingLanguage(false);
+      Alert.alert(t('error'), t('languageChangeError'));
     }
   };
 
@@ -449,9 +457,8 @@ const SettingsScreen = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t('selectLanguage')}</Text>
               <TouchableOpacity 
-                onPress={() => !isChangingLanguage && setShowLanguageModal(false)} // Disable close while changing
+                onPress={() => setShowLanguageModal(false)}
                 style={styles.closeButton}
-                disabled={isChangingLanguage}
               >
                 <MaterialIcons name="close" size={24} color={theme.COLORS.text} />
               </TouchableOpacity>
@@ -461,11 +468,9 @@ const SettingsScreen = () => {
                 key={lang.code}
                 style={[
                   styles.languageOption,
-                  currentLanguage === lang.code && styles.selectedLanguage,
-                  isChangingLanguage && styles.disabledOption // Style disabled options
+                  currentLanguage === lang.code && styles.selectedLanguage
                 ]}
                 onPress={() => handleLanguageChange(lang.code)}
-                disabled={isChangingLanguage || currentLanguage === lang.code}
               >
                 <Text style={styles.languageIcon}>{lang.icon}</Text>
                 <Text style={[
@@ -474,17 +479,13 @@ const SettingsScreen = () => {
                 ]}>
                   {lang.name}
                 </Text>
-                {isChangingLanguage && currentLanguage !== lang.code ? (
-                  <ActivityIndicator size="small" color={theme.COLORS.primary} style={styles.checkIcon} />
-                ) : currentLanguage === lang.code ? (
+                {currentLanguage === lang.code && (
                   <MaterialIcons 
                     name="check" 
                     size={20} 
                     color={theme.COLORS.primary}
                     style={styles.checkIcon} 
                   />
-                ) : (
-                  <View style={styles.checkIconPlaceholder} /> // Keep spacing consistent
                 )}
               </TouchableOpacity>
             ))}
@@ -668,9 +669,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.COLORS.gray[200],
   },
-  disabledOption: {
-    opacity: 0.6, // Dim the option when changing language
-  },
   selectedLanguage: {
     backgroundColor: theme.COLORS.gray[100],
   },
@@ -689,15 +687,6 @@ const styles = StyleSheet.create({
   },
   checkIcon: {
     marginLeft: theme.SPACING.md,
-    width: 20, // Ensure consistent width
-    height: 20, // Ensure consistent height
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkIconPlaceholder: {
-    marginLeft: theme.SPACING.md,
-    width: 20,
-    height: 20,
   },
   languageSelector: {
     paddingVertical: theme.SPACING.sm,

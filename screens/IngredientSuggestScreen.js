@@ -1,68 +1,132 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, I18nManager } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, I18nManager, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../components/theme';
-import Button from '../components/Button';
 import Card from '../components/Card';
 import { commonIngredients } from '../data/commonIngredients';
 import { t } from '../locales/i18n';
 
+const USER_INGREDIENTS_KEY = 'userIngredients';
+const RECIPES_KEY = 'recipes';
+
 const IngredientSuggestScreen = () => {
-  const [selectedIngredients, setSelectedIngredients] = useState([]);
+  const [userIngredients, setUserIngredients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [matchedRecipes, setMatchedRecipes] = useState([]);
+  const [allRecipes, setAllRecipes] = useState([]);
+
+  useEffect(() => {
+    loadUserIngredients();
+    loadAllRecipes();
+  }, []);
+
+  const loadUserIngredients = async () => {
+    try {
+      const savedIngredients = await AsyncStorage.getItem(USER_INGREDIENTS_KEY);
+      if (savedIngredients) {
+        setUserIngredients(JSON.parse(savedIngredients));
+      }
+    } catch (error) {
+      console.error('Error loading user ingredients:', error);
+      Alert.alert(t('error'), t('loadDataError'));
+    }
+  };
+
+  const saveUserIngredients = async (ingredients) => {
+    try {
+      await AsyncStorage.setItem(USER_INGREDIENTS_KEY, JSON.stringify(ingredients));
+    } catch (error) {
+      console.error('Error saving user ingredients:', error);
+      Alert.alert(t('error'), t('saveDataError'));
+    }
+  };
+
+  const loadAllRecipes = async () => {
+    try {
+      const recipesData = await AsyncStorage.getItem(RECIPES_KEY);
+      if (recipesData) {
+        setAllRecipes(JSON.parse(recipesData));
+      }
+    } catch (error) {
+      console.error('Error loading recipes:', error);
+      Alert.alert(t('error'), t('loadDataError'));
+    }
+  };
 
   const filteredIngredients = searchQuery
-    ? commonIngredients.filter(ing => 
-        ing.toLowerCase().includes(searchQuery.toLowerCase())
+    ? commonIngredients.filter(ing =>
+        t(`ingredientsList.${ing.toLowerCase()}`, { defaultValue: ing })
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())
       )
     : commonIngredients;
 
   const toggleIngredient = (ingredient) => {
-    setSelectedIngredients(prev => {
+    setUserIngredients(prev => {
+      let updatedIngredients;
       if (prev.includes(ingredient)) {
-        return prev.filter(i => i !== ingredient);
+        updatedIngredients = prev.filter(i => i !== ingredient);
       } else {
-        return [...prev, ingredient];
+        updatedIngredients = [...prev, ingredient];
       }
+      saveUserIngredients(updatedIngredients);
+      return updatedIngredients;
     });
   };
 
-  const findMatches = async () => {
-    try {
-      const recipesData = await AsyncStorage.getItem('recipes');
-      if (recipesData) {
-        const recipes = JSON.parse(recipesData);
-        const matches = recipes.filter(recipe => {
-          const ingredientList = recipe.ingredients.toLowerCase();
-          return selectedIngredients.some(ingredient => 
-            ingredientList.includes(ingredient.toLowerCase())
-          );
-        });
-        setMatchedRecipes(matches);
-      }
-    } catch (error) {
-      console.error('Error finding matches:', error);
+  const findMatches = useCallback(() => {
+    if (userIngredients.length === 0 || allRecipes.length === 0) {
+      setMatchedRecipes([]);
+      return;
     }
-  };
+
+    const matches = allRecipes
+      .map(recipe => {
+        const recipeIngredientsLower = (recipe.ingredients || '').toLowerCase();
+        const userIngredientsLower = userIngredients.map(ing => ing.toLowerCase());
+
+        let matchCount = 0;
+        let missingCount = 0;
+        const requiredIngredients = recipeIngredientsLower.split('\n').map(s => s.trim()).filter(Boolean);
+
+        const ownedIngredients = userIngredientsLower.filter(userIng =>
+          recipeIngredientsLower.includes(userIng)
+        );
+        matchCount = ownedIngredients.length;
+
+        const recipeIngredientSet = new Set(requiredIngredients.map(ing => ing.split(' ')[0]));
+        missingCount = [...recipeIngredientSet].filter(recipeIngName =>
+          !userIngredientsLower.some(userIng => userIng.includes(recipeIngName))
+        ).length;
+
+        if (matchCount > 0) {
+          return {
+            ...recipe,
+            matchCount: matchCount,
+            missingCount: missingCount,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    matches.sort((a, b) => {
+      if (b.matchCount !== a.matchCount) {
+        return b.matchCount - a.matchCount;
+      }
+      return a.missingCount - b.missingCount;
+    });
+
+    setMatchedRecipes(matches);
+  }, [userIngredients, allRecipes]);
 
   useEffect(() => {
-    if (selectedIngredients.length > 0) {
-      findMatches();
-    } else {
-      setMatchedRecipes([]);
-    }
-  }, [selectedIngredients]);
+    findMatches();
+  }, [userIngredients, allRecipes, findMatches]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, I18nManager.isRTL && styles.rtlText]}>
-          {t('ingredientSuggestions')}
-        </Text>
-      </View>
-
       <View style={styles.searchContainer}>
         <View style={[styles.searchInputContainer, I18nManager.isRTL && styles.rtlSearchInputContainer]}>
           <MaterialIcons name="search" size={20} color={theme.COLORS.gray[500]} />
@@ -85,25 +149,25 @@ const IngredientSuggestScreen = () => {
       <ScrollView style={styles.content}>
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, I18nManager.isRTL && styles.rtlText]}>
-            {t('selectedIngredients')}
+            {t('yourIngredients')}
           </Text>
           <View style={[styles.selectedIngredientsContainer, I18nManager.isRTL && styles.rtlContainer]}>
-            {selectedIngredients.length > 0 ? (
-              selectedIngredients.map(ingredient => (
+            {userIngredients.length > 0 ? (
+              userIngredients.map(ingredient => (
                 <TouchableOpacity
                   key={ingredient}
                   style={[styles.selectedIngredient, I18nManager.isRTL && styles.rtlSelectedIngredient]}
                   onPress={() => toggleIngredient(ingredient)}
                 >
                   <Text style={[styles.selectedIngredientText, I18nManager.isRTL && styles.rtlMargin]}>
-                    {ingredient}
+                    {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient })}
                   </Text>
                   <MaterialIcons name="close" size={16} color={theme.COLORS.white} />
                 </TouchableOpacity>
               ))
             ) : (
               <Text style={[styles.noSelectionText, I18nManager.isRTL && styles.rtlText]}>
-                {t('noIngredientsSelected')}
+                {t('noIngredientsAdded')}
               </Text>
             )}
           </View>
@@ -111,7 +175,7 @@ const IngredientSuggestScreen = () => {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, I18nManager.isRTL && styles.rtlText]}>
-            {t('commonIngredients')}
+            {searchQuery ? t('searchResults') : t('commonIngredients')}
           </Text>
           <View style={[styles.ingredientsGrid, I18nManager.isRTL && styles.rtlContainer]}>
             {filteredIngredients.map(ingredient => (
@@ -119,22 +183,25 @@ const IngredientSuggestScreen = () => {
                 key={ingredient}
                 style={[
                   styles.ingredientButton,
-                  selectedIngredients.includes(ingredient) && styles.selectedIngredientButton,
+                  userIngredients.includes(ingredient) && styles.selectedIngredientButton,
                   I18nManager.isRTL && styles.rtlIngredientButton
                 ]}
                 onPress={() => toggleIngredient(ingredient)}
               >
-                <Text 
+                <Text
                   style={[
                     styles.ingredientButtonText,
-                    selectedIngredients.includes(ingredient) && styles.selectedIngredientButtonText,
+                    userIngredients.includes(ingredient) && styles.selectedIngredientButtonText,
                     I18nManager.isRTL && styles.rtlText
                   ]}
                 >
-                  {ingredient}
+                  {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient })}
                 </Text>
               </TouchableOpacity>
             ))}
+            {searchQuery && filteredIngredients.length === 0 && (
+              <Text style={styles.noResultsText}>{t('noResultsFound')}</Text>
+            )}
           </View>
         </View>
 
@@ -156,15 +223,25 @@ const IngredientSuggestScreen = () => {
                 <View style={[styles.matchInfo, I18nManager.isRTL && styles.rtlMatchInfo]}>
                   <MaterialIcons name="check-circle" size={16} color={theme.COLORS.success} />
                   <Text style={[styles.matchText, I18nManager.isRTL && styles.rtlMatchText]}>
-                    {t('matchesIngredients', {
-                      count: selectedIngredients.filter(ing => 
-                        recipe.ingredients.toLowerCase().includes(ing.toLowerCase())
-                      ).length
-                    })}
+                    {t('matchesCount', { count: recipe.matchCount })}
                   </Text>
+                  {recipe.missingCount > 0 && (
+                    <>
+                      <MaterialIcons name="remove-shopping-cart" size={16} color={theme.COLORS.warning} style={styles.missingIcon} />
+                      <Text style={[styles.matchText, styles.missingText, I18nManager.isRTL && styles.rtlMatchText]}>
+                        {t('missingCount', { count: recipe.missingCount })}
+                      </Text>
+                    </>
+                  )}
                 </View>
               </Card>
             ))}
+          </View>
+        )}
+        {userIngredients.length > 0 && matchedRecipes.length === 0 && (
+          <View style={styles.emptyState}>
+            <MaterialIcons name="search-off" size={48} color={theme.COLORS.gray[300]} />
+            <Text style={styles.emptyStateText}>{t('noMatchingRecipesFound')}</Text>
           </View>
         )}
       </ScrollView>
@@ -289,11 +366,35 @@ const styles = StyleSheet.create({
   matchInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: theme.SPACING.xs,
   },
   matchText: {
     fontSize: theme.FONT_SIZES.sm,
     color: theme.COLORS.gray[600],
     marginLeft: theme.SPACING.xs,
+  },
+  missingIcon: {
+    marginLeft: theme.SPACING.sm,
+  },
+  missingText: {
+    color: theme.COLORS.warning,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: theme.SPACING.xl,
+  },
+  emptyStateText: {
+    marginTop: theme.SPACING.md,
+    fontSize: theme.FONT_SIZES.md,
+    color: theme.COLORS.gray[500],
+    textAlign: 'center',
+  },
+  noResultsText: {
+    color: theme.COLORS.gray[500],
+    fontStyle: 'italic',
+    padding: theme.SPACING.md,
   },
   rtlText: {
     textAlign: 'right',

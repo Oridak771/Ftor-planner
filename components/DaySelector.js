@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react'; // Removed createRef
 import {
   View,
   Text,
@@ -19,30 +19,44 @@ const DaySelector = ({
   isNextWeek = false,
   daysOfWeek = [],
 }) => {
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const scrollViewRef = useRef(null);
-  const [dayLayouts, setDayLayouts] = useState({});
 
   const translateDay = (day) => {
     return t(day.toLowerCase());
   };
 
-  const getTodayString = () => new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const isToday = (day) => {
+    return day === today && !isNextWeek;
+  };
 
   useEffect(() => {
-    const todayString = getTodayString();
-    const currentIsToday = (day) => day === todayString && !isNextWeek;
-
     if (scrollViewRef.current && daysOfWeek.length > 0) {
-      const todayEntry = daysOfWeek.find(day => currentIsToday(day));
+      const todayIndex = daysOfWeek.findIndex(day => isToday(day));
 
-      if (todayEntry) {
-        const layoutOfToday = dayLayouts[todayEntry];
-        if (layoutOfToday && typeof layoutOfToday.x === 'number') {
-          scrollViewRef.current.scrollTo({ x: layoutOfToday.x, animated: true });
-        }
+      if (todayIndex !== -1) {
+        const timer = setTimeout(() => {
+          if (scrollViewRef.current) {
+            const buttonStyle = styles.dayButton || {};
+            const scrollStyle = styles.scrollContent || {};
+            const buttonWidth = buttonStyle.minWidth || 75;
+            const buttonMargin = buttonStyle.marginHorizontal || theme.SPACING.xs;
+            const scrollPadding = scrollStyle.paddingHorizontal || theme.SPACING.md;
+
+            const targetX = todayIndex * (buttonWidth + buttonMargin * 2);
+            const scrollToX = targetX - scrollPadding;
+
+            scrollViewRef.current.scrollTo({
+              x: scrollToX >= 0 ? scrollToX : 0,
+              animated: true
+            });
+          }
+        }, 150);
+
+        return () => clearTimeout(timer);
       }
     }
-  }, [daysOfWeek, dayLayouts, isNextWeek]);
+  }, [daysOfWeek, isNextWeek, today, styles.dayButton, styles.scrollContent]);
 
   return (
     <View style={styles.container}>
@@ -53,8 +67,7 @@ const DaySelector = ({
         contentContainerStyle={styles.scrollContent}
       >
         {daysOfWeek.map((day, index) => {
-          const todayString = getTodayString();
-          const isCurrentToday = day === todayString && !isNextWeek;
+          const isCurrentToday = isToday(day);
           const isSelected = selectedDay === day;
 
           return (
@@ -67,15 +80,6 @@ const DaySelector = ({
               ]}
               onPress={() => onSelectDay(day)}
               activeOpacity={0.7}
-              onLayout={(event) => {
-                const { x } = event.nativeEvent.layout;
-                if (!dayLayouts[day] || dayLayouts[day].x !== x) {
-                  setDayLayouts(prevLayouts => ({
-                    ...prevLayouts,
-                    [day]: { x },
-                  }));
-                }
-              }}
             >
               <Text
                 style={[

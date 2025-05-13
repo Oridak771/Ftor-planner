@@ -221,7 +221,7 @@ const HomeScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.background} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('mealPlanner')}</Text>
+        
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity 
             style={styles.weekToggle}
