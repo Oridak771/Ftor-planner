@@ -34,4 +34,4 @@ export const commonIngredients = [
   'turmeric',
   'ginger',
   'cinnamon'
-].map(ingredient => t(`ingredients.${ingredient}`));
+];

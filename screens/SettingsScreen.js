@@ -24,7 +24,6 @@ import { useLanguage } from '../components/LanguageContext';
 import * as Updates from 'expo-updates';
 
 const SettingsScreen = () => {
-  const [isVegetarian, setIsVegetarian] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [mealReminders, setMealReminders] = useState(true);
@@ -52,11 +51,6 @@ const SettingsScreen = () => {
 
   const loadSettings = async () => {
     try {
-      const vegetarianSetting = await AsyncStorage.getItem('isVegetarian');
-      if (vegetarianSetting !== null) {
-        setIsVegetarian(vegetarianSetting === 'true');
-      }
-      
       const darkModeSetting = await AsyncStorage.getItem('isDarkMode');
       if (darkModeSetting !== null) {
         setIsDarkMode(darkModeSetting === 'true');
@@ -98,11 +92,6 @@ const SettingsScreen = () => {
     }
   };
 
-  const toggleVegetarian = async (value) => {
-    setIsVegetarian(value);
-    saveSetting('isVegetarian', value);
-  };
-
   const toggleDarkMode = async (value) => {
     setIsDarkMode(value);
     saveSetting('isDarkMode', value);
@@ -134,7 +123,7 @@ const SettingsScreen = () => {
     const hasEnabledType = Object.values(updatedMealTypes).some(enabled => enabled);
     
     if (!hasEnabledType) {
-      Alert.alert('Error', 'At least one meal type must be enabled.');
+      Alert.alert(t('error'), t('atLeastOneMealType'));
       return;
     }
     
@@ -143,7 +132,7 @@ const SettingsScreen = () => {
   };
 
   const backupKeys = [
-    'meals', 'recipes', 'shoppingList', 'mealTypes', 'isVegetarian', 'isDarkMode', 'notificationsEnabled', 'mealReminders', 'weekStartsOn', 'language'
+    'meals', 'recipes', 'shoppingList', 'mealTypes', 'isDarkMode', 'notificationsEnabled', 'mealReminders', 'weekStartsOn', 'language'
   ];
 
   const handleExportData = async () => {
@@ -156,9 +145,9 @@ const SettingsScreen = () => {
       const fileUri = FileSystem.documentDirectory + 'ftorplanner-backup.json';
       await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
       await Sharing.shareAsync(fileUri);
-      Alert.alert('Export Successful', 'Your data has been exported successfully.');
+      Alert.alert(t('exportSuccess'), t('exportSuccessMsg'));
     } catch (e) {
-      Alert.alert('Export Failed', 'Could not export data.');
+      Alert.alert(t('exportFailed'), t('exportFailedMsg'));
     }
   };
 
@@ -173,9 +162,9 @@ const SettingsScreen = () => {
           await AsyncStorage.setItem(key, backup[key]);
         }
       }
-      Alert.alert('Import Successful', 'Your data has been imported successfully.');
+      Alert.alert(t('importSuccess'), t('importSuccessMsg'));
     } catch (e) {
-      Alert.alert('Import Failed', 'Could not import data.');
+      Alert.alert(t('importFailed'), t('importFailedMsg'));
     }
   };
 
@@ -198,7 +187,6 @@ const SettingsScreen = () => {
                 await AsyncStorage.removeItem(key);
               }
               // Reset all states to default
-              setIsVegetarian(false);
               setIsDarkMode(false);
               setNotificationsEnabled(true);
               setMealReminders(true);
@@ -209,10 +197,10 @@ const SettingsScreen = () => {
                 dinner: true,
                 snack: true
               });
-              Alert.alert('Success', 'All data has been cleared successfully.');
+              Alert.alert(t('success'), t('clearDataSuccess'));
             } catch (error) {
               console.error('Error clearing data:', error);
-              Alert.alert('Error', 'Failed to clear data. Please try again.');
+              Alert.alert(t('error'), t('clearDataError'));
             }
           },
         },
@@ -224,8 +212,8 @@ const SettingsScreen = () => {
     try {
       const result = await setAppLanguage(langCode);
 
-      if (result === 'reload') {
-        setShowLanguageModal(false); // Close modal before showing alert
+      if (result === 'reload' || result === true) {
+        setShowLanguageModal(false);
         Alert.alert(
           t('restartRequired'),
           t('restartMessage'),
@@ -238,8 +226,6 @@ const SettingsScreen = () => {
             }
           ]
         );
-      } else if (result === true) {
-        setShowLanguageModal(false);
       } else {
         setShowLanguageModal(false);
         Alert.alert(t('error'), t('languageChangeError'));
@@ -289,7 +275,7 @@ const SettingsScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.background} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>{t('settings')}</Text>
       </View>
       
       <ScrollView 
@@ -297,60 +283,53 @@ const SettingsScreen = () => {
         contentContainerStyle={styles.contentContainer}
       >
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
+          <Text style={styles.sectionTitle}>{t('preferences')}</Text>
           
           {renderSettingSwitch(
-            'Vegetarian Mode',
-            isVegetarian,
-            toggleVegetarian,
-            'Only show vegetarian recipes'
-          )}
-          
-          {renderSettingSwitch(
-            'Dark Mode',
+            t('darkMode'),
             isDarkMode,
             toggleDarkMode,
-            'Use dark theme throughout the app'
+            t('darkModeDesc')
           )}
         </Card>
         
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Meal Types</Text>
-          <Text style={styles.settingDescription}>Select which meal types to display in your planner</Text>
+          <Text style={styles.sectionTitle}>{t('mealTypes')}</Text>
+          <Text style={styles.settingDescription}>{t('mealTypesDesc')}</Text>
           
-          {renderMealTypeSwitch('breakfast', 'Breakfast', 'free-breakfast')}
-          {renderMealTypeSwitch('lunch', 'Lunch', 'restaurant')}
-          {renderMealTypeSwitch('dinner', 'Dinner', 'dinner-dining')}
-          {renderMealTypeSwitch('snack', 'Snacks', 'icecream')}
+          {renderMealTypeSwitch('breakfast', t('breakfast'), 'free-breakfast')}
+          {renderMealTypeSwitch('lunch', t('lunch'), 'restaurant')}
+          {renderMealTypeSwitch('dinner', t('dinner'), 'dinner-dining')}
+          {renderMealTypeSwitch('snack', t('snackPlural'), 'icecream')}
         </Card>
         
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={styles.sectionTitle}>{t('notifications')}</Text>
           
           {renderSettingSwitch(
-            'Enable Notifications',
+            t('enableNotifications'),
             notificationsEnabled,
             toggleNotifications,
-            'Receive app notifications'
+            t('notificationsDesc')
           )}
           
           {renderSettingSwitch(
-            'Meal Reminders',
+            t('mealReminders'),
             mealReminders,
             toggleMealReminders,
-            'Get reminders for planned meals',
+            t('mealRemindersDesc'),
             !notificationsEnabled
           )}
         </Card>
         
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Calendar</Text>
-          <Text style={styles.settingLabel}>Week Starts On</Text>
+          <Text style={styles.sectionTitle}>{t('calendar')}</Text>
+          <Text style={styles.settingLabel}>{t('weekStartsOn')}</Text>
           
           <View style={styles.weekDayContainer}>
             {[
-              { id: 'monday', label: 'Monday' },
-              { id: 'sunday', label: 'Sunday' },
+              { id: 'monday', label: t('monday') },
+              { id: 'sunday', label: t('sunday') },
             ].map(day => (
               <TouchableOpacity
                 key={day.id}
@@ -398,11 +377,11 @@ const SettingsScreen = () => {
         </Card>
         
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Data Management</Text>
+          <Text style={styles.sectionTitle}>{t('dataManagement')}</Text>
           
           <View style={styles.dataButtonsContainer}>
             <Button
-              title="Export Data"
+              title={t('exportData')}
               variant="outline"
               onPress={handleExportData}
               style={styles.dataButton}
@@ -410,7 +389,7 @@ const SettingsScreen = () => {
             />
             
             <Button
-              title="Import Data"
+              title={t('importData')}
               variant="outline"
               onPress={handleImportData}
               style={styles.dataButton}
@@ -419,7 +398,7 @@ const SettingsScreen = () => {
           </View>
           
           <Button
-            title="Clear All Data"
+            title={t('clearAllData')}
             variant="danger"
             onPress={handleClearData}
             style={styles.clearDataButton}
@@ -427,25 +406,25 @@ const SettingsScreen = () => {
         </Card>
         
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
+          <Text style={styles.sectionTitle}>{t('about')}</Text>
           
           <View style={styles.aboutItem}>
-            <Text style={styles.aboutLabel}>Version</Text>
+            <Text style={styles.aboutLabel}>{t('version')}</Text>
             <Text style={styles.aboutValue}>1.0.0</Text>
           </View>
           
           <View style={styles.aboutItem}>
-            <Text style={styles.aboutLabel}>Developer</Text>
+            <Text style={styles.aboutLabel}>{t('developer')}</Text>
             <Text style={styles.aboutValue}>Ftor Planner Team</Text>
           </View>
           
           <TouchableOpacity style={styles.linkItem}>
-            <Text style={styles.linkText}>Privacy Policy</Text>
+            <Text style={styles.linkText}>{t('privacyPolicy')}</Text>
             <MaterialIcons name="arrow-forward-ios" size={16} color={theme.COLORS.gray[600]} />
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.linkItem}>
-            <Text style={styles.linkText}>Terms of Service</Text>
+            <Text style={styles.linkText}>{t('termsOfService')}</Text>
             <MaterialIcons name="arrow-forward-ios" size={16} color={theme.COLORS.gray[600]} />
           </TouchableOpacity>
         </Card>

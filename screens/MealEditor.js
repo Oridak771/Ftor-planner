@@ -9,6 +9,7 @@ import {
   Platform,
   Modal,
   ScrollView,
+  FlatList,
   I18nManager,
   Alert
 } from 'react-native';
@@ -23,16 +24,19 @@ const MealEditor = ({
   onCancel, 
   initialMeal = null,
   selectedDay,
-  availableMealTypes = []
+  availableMealTypes = [],
+  recipeNames = []
 }) => {
-  const [meal, setMeal] = useState(initialMeal?.meal || '');
+  const [mealName, setMealName] = useState(initialMeal ? initialMeal.meal : '');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredRecipes, setFilteredRecipes] = useState([]);
   const [notes, setNotes] = useState(initialMeal?.notes || '');
   const [mealType, setMealType] = useState(initialMeal?.type || '');
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (initialMeal) {
-      setMeal(initialMeal.meal || '');
+      setMealName(initialMeal.meal || '');
       setNotes(initialMeal.notes || '');
       setMealType(initialMeal.type || '');
     } else if (availableMealTypes.length > 0) {
@@ -40,8 +44,25 @@ const MealEditor = ({
     }
   }, [initialMeal, availableMealTypes]);
 
+  const handleMealNameChange = (text) => {
+    setMealName(text);
+    if (text.length > 0) {
+      const filtered = recipeNames.filter(name => name.toLowerCase().includes(text.toLowerCase()));
+      setFilteredRecipes(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setFilteredRecipes([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSuggestionPress = (name) => {
+    setMealName(name);
+    setShowSuggestions(false);
+  };
+
   const handleSave = async () => {
-    if (!meal.trim()) {
+    if (!mealName.trim()) {
       Alert.alert(t('error'), t('mealNameRequired'));
       return;
     }
@@ -56,13 +77,13 @@ const MealEditor = ({
       const mealData = {
         id: initialMeal?.id,
         day: selectedDay,
-        meal: meal.trim(),
+        meal: mealName.trim(),
         notes: notes.trim(),
         type: mealType,
       };
 
       await onSave(mealData);
-      setMeal('');
+      setMealName('');
       setNotes('');
       setMealType(availableMealTypes.length > 0 ? availableMealTypes[0].id : '');
     } catch (error) {
@@ -94,7 +115,7 @@ const MealEditor = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.form}>
+          <View style={styles.form}>
             <Text style={styles.label}>{t('day')}</Text>
             <View style={styles.dayDisplay}>
               <MaterialIcons name="event" size={24} color={theme.COLORS.primary} />
@@ -132,14 +153,33 @@ const MealEditor = ({
             </View>
 
             <Text style={styles.label}>{t('mealName')}</Text>
-            <TextInput
-              style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
-              value={meal}
-              onChangeText={setMeal}
-              placeholder={t('enterMealName')}
-              placeholderTextColor={theme.COLORS.gray[400]}
-              textAlign={I18nManager.isRTL ? 'right' : 'left'}
-            />
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                style={styles.input}
+                placeholder={t('mealName')}
+                value={mealName}
+                onChangeText={handleMealNameChange}
+                onFocus={() => handleMealNameChange(mealName)}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {showSuggestions && (
+                <FlatList
+                  data={filteredRecipes}
+                  keyExtractor={(item) => item}
+                  style={styles.suggestionsList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.suggestionItem}
+                      onPress={() => handleSuggestionPress(item)}
+                    >
+                      <Text style={styles.suggestionText}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                  keyboardShouldPersistTaps="handled"
+                />
+              )}
+            </View>
 
             <Text style={styles.label}>{t('notesOptional')}</Text>
             <TextInput
@@ -165,11 +205,11 @@ const MealEditor = ({
                 title={initialMeal ? t('update') : t('save')}
                 onPress={handleSave}
                 loading={isLoading}
-                disabled={!meal.trim() || !mealType}
+                disabled={!mealName.trim() || !mealType}
                 style={styles.button}
               />
             </View>
-          </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -177,6 +217,49 @@ const MealEditor = ({
 };
 
 const styles = StyleSheet.create({
+  suggestionsList: {
+    position: 'absolute',
+    top: 54,
+    left: 0,
+    right: 0,
+    marginTop: theme.SPACING.xs,
+    marginBottom: theme.SPACING.md,
+    backgroundColor: theme.COLORS.white,
+    borderRadius: theme.BORDER_RADIUS.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 12,
+    zIndex: 20,
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: theme.COLORS.gray[200],
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    paddingVertical: theme.SPACING.md,
+    paddingHorizontal: theme.SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.gray[100],
+    backgroundColor: theme.COLORS.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    transition: 'background-color 0.2s',
+  },
+  suggestionItemPressed: {
+    backgroundColor: theme.COLORS.gray[200],
+  },
+  suggestionText: {
+    fontSize: theme.FONT_SIZES.lg,
+    color: theme.COLORS.text,
+    fontWeight: '700',
+    paddingLeft: theme.SPACING.sm,
+    letterSpacing: 0.2,
+  },
+  suggestionTextPressed: {
+    color: theme.COLORS.primary,
+  },
   container: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

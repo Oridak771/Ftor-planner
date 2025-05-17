@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getMeals, deleteMeal } from '../utils/storage';
+import { getMeals, deleteMeal, saveMeal } from '../utils/storage';
 import MealEditor from './MealEditor';
 import theme from '../components/theme';
 import Card from '../components/Card';
@@ -35,6 +35,8 @@ const HomeScreen = () => {
     dinner: true,
     snack: true
   });
+  const [recipeNames, setRecipeNames] = useState([]); // <-- NEW
+  const [isVegetarian, setIsVegetarian] = useState(false);
 
   // Get current day of week
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
@@ -44,10 +46,30 @@ const HomeScreen = () => {
     if (!selectedDay) {
       setSelectedDay(today);
     }
-    
     loadSettings();
     fetchMeals();
+    fetchRecipeNames(); // <-- NEW
   }, []);
+// Duplicate useState declarations removed below this line
+
+  // Fetch recipe names from AsyncStorage
+  const fetchRecipeNames = async () => {
+    try {
+      const savedRecipes = await AsyncStorage.getItem('recipes');
+      if (savedRecipes) {
+        const recipes = JSON.parse(savedRecipes);
+        const names = recipes.map(r => r.title).filter(Boolean);
+        setRecipeNames(names);
+      } else {
+        setRecipeNames([]);
+      }
+    } catch (error) {
+      setRecipeNames([]);
+      console.error('Error loading recipe names:', error);
+    }
+  };
+
+  // ... (rest of the code remains unchanged)
   
   const loadSettings = async () => {
     try {
@@ -77,10 +99,16 @@ const HomeScreen = () => {
     }
   };
 
-  const handleSave = () => {
-    setShowEditor(false);
-    setEditMeal(null);
-    fetchMeals();
+  const handleSave = async (mealData) => {
+    try {
+      await saveMeal(mealData);
+      setShowEditor(false);
+      setEditMeal(null);
+      fetchMeals();
+    } catch (error) {
+      console.error('Error saving meal:', error);
+      Alert.alert('Error', 'Failed to save meal.');
+    }
   };
 
   const handleCancel = () => {
@@ -112,7 +140,11 @@ const HomeScreen = () => {
     setSelectedDay(day);
   };
 
-  const weekLabels = ['This Week', 'Next Week', 'Week After Next'];
+  const weekLabels = [
+    t('thisWeek'),
+    t('nextWeek'),
+    t('weekAfterNext')
+  ];
 
   const toggleWeekView = (direction) => {
     setWeekIndex((prev) => {
@@ -131,7 +163,8 @@ const HomeScreen = () => {
     return daysOfWeek.map((day, i) => {
       const d = new Date(startOfWeek);
       d.setDate(startOfWeek.getDate() + i);
-      return d.toLocaleDateString('en-US', { weekday: 'long' });
+      // Return translation key for day
+      return t(day.toLowerCase());
     });
   };
 
@@ -263,7 +296,7 @@ const HomeScreen = () => {
             <View style={styles.todayHeader}>
               <View style={styles.todayTitleContainer}>
                 <Text style={styles.todayTitle}>{t('today')}</Text>
-                <Text style={styles.todayDate}>{today}</Text>
+                <Text style={styles.todayDate}>{t(today.toLowerCase())}</Text>
               </View>
               <TouchableOpacity
                 style={styles.addTodayButton}
@@ -339,7 +372,7 @@ const HomeScreen = () => {
         <View style={styles.selectedDayContainer}>
           <View style={styles.selectedDayHeader}>
             <View style={styles.selectedDayTitleContainer}>
-              <Text style={styles.selectedDayTitle}>{selectedDay}</Text>
+              <Text style={styles.selectedDayTitle}>{t(selectedDay.toLowerCase())}</Text>
               <Text style={styles.selectedDaySubtitle}>
                 {weekLabels[weekIndex]}
               </Text>
@@ -378,9 +411,9 @@ const HomeScreen = () => {
           ) : (
             <View style={styles.emptyState}>
               <MaterialIcons name="event-busy" size={40} color={theme.COLORS.gray[400]} />
-              <Text style={styles.emptyStateText}>{t('noMealsForDay', { day: selectedDay })}</Text>
+              <Text style={styles.emptyStateText}>{t('noMealsForDay', { day: t(selectedDay.toLowerCase()) })}</Text>
               <Button
-                title={t('addMealForDay', { day: selectedDay })}
+                title={t('addMealForDay', { day: t(selectedDay.toLowerCase()) })}
                 onPress={() => handleAddMeal(selectedDay)}
                 style={styles.emptyStateButton}
               />
@@ -390,15 +423,16 @@ const HomeScreen = () => {
       </ScrollView>
 
       {/* Meal Editor Modal */}
-      {showEditor && (
-        <MealEditor 
-          onSave={handleSave} 
-          onCancel={handleCancel}
-          initialMeal={editMeal} 
-          selectedDay={selectedDay}
-          availableMealTypes={getAvailableMealTypes()}
-        />
-      )}
+      <MealEditor
+            isVisible={showEditor}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            initialMeal={editMeal}
+            selectedDay={selectedDay}
+            availableMealTypes={getAvailableMealTypes()}
+            recipeNames={recipeNames}
+            saveMeal={saveMeal} // Pass saveMeal to MealEditor
+          />
     </SafeAreaView>
   );
 };

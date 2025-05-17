@@ -155,5 +155,17 @@
     "turmeric": "كركم",
     "ginger": "زنجبيل",
     "cinnamon": "قرفة"
-  }
+  },
+  "yourIngredients": "مكوناتك",
+  "noIngredientsAdded": "أضف المكونات التي لديك من القائمة أدناه",
+  "snackPlural": "وجبات خفيفة",
+  "atLeastOneMealType": "يجب تفعيل نوع واحد على الأقل من الوجبات.",
+  "exportSuccess": "تم التصدير بنجاح",
+  "exportSuccessMsg": "تم تصدير بياناتك بنجاح.",
+  "exportFailed": "فشل في التصدير",
+  "exportFailedMsg": "تعذر تصدير البيانات.",
+  "importSuccess": "تم الاستيراد بنجاح",
+  "importSuccessMsg": "تم استيراد بياناتك بنجاح.",
+  "importFailed": "فشل في الاستيراد",
+  "importFailedMsg": "تعذر استيراد البيانات."
 }

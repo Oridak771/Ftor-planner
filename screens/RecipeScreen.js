@@ -11,13 +11,16 @@ import {
   Platform,
   Modal,
   Alert,
-  I18nManager
+  I18nManager,
+  Keyboard
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RNPickerSelect from 'react-native-picker-select';
 import theme from '../components/theme';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { commonIngredients } from '../data/commonIngredients'; // Added
 import { t } from '../locales/i18n';
 
 const STORAGE_KEY = 'recipes';
@@ -30,13 +33,24 @@ const RecipeScreen = () => {
   const [newRecipe, setNewRecipe] = useState({
     title: '',
     description: '',
-    ingredients: '',
+    ingredients: [],
     instructions: '',
     prepTime: '',
     cookTime: '',
     servings: '',
     category: ''
   });
+
+  // State for ingredient input and suggestions
+  const [ingredientInput, setIngredientInput] = useState('');
+  const [filteredIngredients, setFilteredIngredients] = useState([]);
+
+  const allCategories = [
+    { label: 'Breakfast', value: 'breakfast' },
+    { label: 'Lunch', value: 'lunch' },
+    { label: 'Dinner', value: 'dinner' },
+    { label: 'Dessert', value: 'dessert' },
+  ];
 
   useEffect(() => {
     loadRecipes();
@@ -111,7 +125,7 @@ const RecipeScreen = () => {
     setNewRecipe({
       title: '',
       description: '',
-      ingredients: '',
+      ingredients: [],
       instructions: '',
       prepTime: '',
       cookTime: '',
@@ -126,7 +140,7 @@ const RecipeScreen = () => {
     setNewRecipe({
       title: recipe.title,
       description: recipe.description || '',
-      ingredients: recipe.ingredients || '',
+      ingredients: recipe.ingredients || [],
       instructions: recipe.instructions || '',
       prepTime: recipe.prepTime || '',
       cookTime: recipe.cookTime || '',
@@ -138,8 +152,8 @@ const RecipeScreen = () => {
 
   const filteredRecipes = recipes.filter(recipe =>
     recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    recipe.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    recipe.ingredients.toLowerCase().includes(searchQuery.toLowerCase())
+    (recipe.description && recipe.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (recipe.ingredients && Array.isArray(recipe.ingredients) && recipe.ingredients.join(' ').toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const renderItem = ({ item }) => (
@@ -293,19 +307,78 @@ const RecipeScreen = () => {
                 textAlignVertical="top"
                 textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
-
               <Text style={styles.label}>{t('ingredients')}</Text>
+              {/* Display selected ingredients as chips */}
+              <View style={styles.selectedIngredientsContainer}>
+                {newRecipe.ingredients.map((ingredientKey, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.selectedIngredientChip}
+                    onPress={() => {
+                      const updatedIngredients = newRecipe.ingredients.filter(item => item !== ingredientKey);
+                      setNewRecipe({ ...newRecipe, ingredients: updatedIngredients });
+                    }}
+                  >
+                    <Text style={styles.selectedIngredientChipText}>
+                      {ingredientKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </Text>
+                    <MaterialIcons name="close" size={16} color={theme.COLORS.white} style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Input for adding ingredients with autocomplete */}
               <TextInput
-                style={[styles.input, styles.textArea, I18nManager.isRTL && styles.rtlInput]}
-                value={newRecipe.ingredients}
-                onChangeText={text => setNewRecipe({ ...newRecipe, ingredients: text })}
-                placeholder={t('enterIngredients')}
+                style={[styles.input, I18nManager.isRTL && styles.rtlInput, { marginBottom: filteredIngredients.length > 0 ? 0 : theme.SPACING.md }]}
+                value={ingredientInput}
+                onChangeText={(text) => {
+                  setIngredientInput(text);
+                  if (text) {
+                    // Filter canonical keys by translated label
+                    const suggestions = commonIngredients
+                      .filter(ingKey => {
+                        const label = t(`ingredientsList.${ingKey.toLowerCase()}`, { defaultValue: ingKey });
+                        return label.toLowerCase().includes(text.toLowerCase());
+                      })
+                      .filter(ingKey => !newRecipe.ingredients.includes(ingKey)); // Only canonical keys in state
+                    setFilteredIngredients(suggestions.slice(0, 5));
+                  } else {
+                    setFilteredIngredients([]);
+                  }
+                }}
+                placeholder={t('addIngredientPlaceholder')}
                 placeholderTextColor={theme.COLORS.gray[400]}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
                 textAlign={I18nManager.isRTL ? 'right' : 'left'}
               />
+
+              {/* Suggestions List */}
+              {filteredIngredients.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 150 }}>
+                     {filteredIngredients.map((ingKey, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.suggestionItem}
+                        onPress={() => {
+                          if (!newRecipe.ingredients.includes(ingKey)) {
+                            setNewRecipe({
+                              ...newRecipe,
+                              ingredients: [...newRecipe.ingredients, ingKey], // Store canonical key only
+                            });
+                          }
+                          setIngredientInput('');
+                          setFilteredIngredients([]);
+                          Keyboard.dismiss();
+                        }}
+                      >
+                        <Text style={styles.suggestionText}>
+                          {ingKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               <Text style={styles.label}>{t('instructions')}</Text>
               <TextInput
@@ -364,13 +437,13 @@ const RecipeScreen = () => {
 
                 <View style={styles.halfInput}>
                   <Text style={styles.label}>{t('category')}</Text>
-                  <TextInput
-                    style={[styles.input, I18nManager.isRTL && styles.rtlInput]}
+                  <RNPickerSelect
+                    onValueChange={(value) => setNewRecipe({ ...newRecipe, category: value })}
+                    items={allCategories}
+                    style={pickerSelectStyles}
                     value={newRecipe.category}
-                    onChangeText={text => setNewRecipe({ ...newRecipe, category: text })}
-                    placeholder={t('enterCategory')}
-                    placeholderTextColor={theme.COLORS.gray[400]}
-                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                    placeholder={{ label: t('selectCategory'), value: null }}
+                    useNativeAndroidPickerStyle={false}
                   />
                 </View>
               </View>
@@ -395,6 +468,40 @@ const RecipeScreen = () => {
     </View>
   );
 };
+
+const pickerSelectStyles = StyleSheet.create({
+  inputIOS: {
+    fontSize: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: theme.COLORS.gray[300],
+    borderRadius: theme.BORDER_RADIUS.sm,
+    color: theme.COLORS.text,
+    paddingRight: 30,
+    backgroundColor: theme.COLORS.white,
+    marginBottom: theme.SPACING.md,
+  },
+  inputAndroid: {
+    fontSize: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: theme.COLORS.gray[300],
+    borderRadius: theme.BORDER_RADIUS.sm,
+    color: theme.COLORS.text,
+    paddingRight: 30,
+    backgroundColor: theme.COLORS.white,
+    marginBottom: theme.SPACING.md,
+  },
+  placeholder: {
+    color: theme.COLORS.gray[400],
+  },
+  iconContainer: {
+    top: 10,
+    right: 12,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -586,6 +693,72 @@ const styles = StyleSheet.create({
     color: theme.COLORS.gray[500],
     marginVertical: theme.SPACING.lg,
     textAlign: 'center',
+  },
+  multiSelectContainer: { // This style might be reused or adapted
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: theme.SPACING.md,
+  },
+  selectedIngredientsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: theme.SPACING.sm,
+  },
+  selectedIngredientChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.COLORS.primary,
+    borderRadius: theme.BORDER_RADIUS.full,
+    paddingVertical: theme.SPACING.xs,
+    paddingHorizontal: theme.SPACING.sm,
+    marginRight: theme.SPACING.xs,
+    marginBottom: theme.SPACING.xs,
+  },
+  selectedIngredientChipText: {
+    color: theme.COLORS.white,
+    fontSize: theme.FONT_SIZES.sm,
+  },
+  suggestionsContainer: {
+    backgroundColor: theme.COLORS.white,
+    borderRadius: theme.BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: theme.COLORS.gray[200],
+    marginTop: -theme.BORDER_RADIUS.md, // To make it appear connected to the input
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    marginBottom: theme.SPACING.md,
+    maxHeight: 150, // Ensure it doesn't get too tall
+    ...theme.SHADOWS.small,
+    zIndex: 10, // Ensure suggestions are on top
+  },
+  suggestionItem: {
+    paddingVertical: theme.SPACING.sm,
+    paddingHorizontal: theme.SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.gray[100],
+  },
+  suggestionText: {
+    fontSize: theme.FONT_SIZES.md,
+    color: theme.COLORS.text,
+  },
+  // Old ingredientChip styles - can be removed or adapted if needed elsewhere
+  ingredientChip: {
+    backgroundColor: theme.COLORS.gray[200],
+    borderRadius: theme.BORDER_RADIUS.lg,
+    paddingVertical: theme.SPACING.xs,
+    paddingHorizontal: theme.SPACING.sm,
+    marginRight: theme.SPACING.sm,
+    marginBottom: theme.SPACING.sm,
+  },
+  ingredientChipSelected: {
+    backgroundColor: theme.COLORS.primary,
+  },
+  ingredientChipText: {
+    color: theme.COLORS.text,
+    fontSize: theme.FONT_SIZES.sm,
+  },
+  ingredientChipTextSelected: {
+    color: theme.COLORS.white,
   },
 });
 

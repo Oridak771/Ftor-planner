@@ -164,5 +164,15 @@
     "turmeric": "Turmeric",
     "ginger": "Ginger",
     "cinnamon": "Cinnamon"
-  }
+  },
+  "snackPlural": "Snacks",
+  "atLeastOneMealType": "At least one meal type must be enabled.",
+  "exportSuccess": "Export Successful",
+  "exportSuccessMsg": "Your data has been exported successfully.",
+  "exportFailed": "Export Failed",
+  "exportFailedMsg": "Could not export data.",
+  "importSuccess": "Import Successful",
+  "importSuccessMsg": "Your data has been imported successfully.",
+  "importFailed": "Import Failed",
+  "importFailedMsg": "Could not import data."
 }

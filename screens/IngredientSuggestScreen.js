@@ -6,11 +6,13 @@ import theme from '../components/theme';
 import Card from '../components/Card';
 import { commonIngredients } from '../data/commonIngredients';
 import { t } from '../locales/i18n';
+import { useLanguage } from '../components/LanguageContext';
 
 const USER_INGREDIENTS_KEY = 'userIngredients';
 const RECIPES_KEY = 'recipes';
 
 const IngredientSuggestScreen = () => {
+  const { currentLanguage } = useLanguage();
   const [userIngredients, setUserIngredients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [matchedRecipes, setMatchedRecipes] = useState([]);
@@ -83,21 +85,25 @@ const IngredientSuggestScreen = () => {
 
     const matches = allRecipes
       .map(recipe => {
-        const recipeIngredientsLower = (recipe.ingredients || '').toLowerCase();
+        // Ensure recipe.ingredients is an array of canonical keys
+        const recipeIngredientsArr = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
         const userIngredientsLower = userIngredients.map(ing => ing.toLowerCase());
 
         let matchCount = 0;
         let missingCount = 0;
-        const requiredIngredients = recipeIngredientsLower.split('\n').map(s => s.trim()).filter(Boolean);
+        // All ingredients are canonical keys
+        const requiredIngredients = recipeIngredientsArr.map(s => s.trim()).filter(Boolean);
 
+        // Count how many user ingredients are in the recipe
         const ownedIngredients = userIngredientsLower.filter(userIng =>
-          recipeIngredientsLower.includes(userIng)
+          requiredIngredients.map(ri => ri.toLowerCase()).includes(userIng)
         );
         matchCount = ownedIngredients.length;
 
-        const recipeIngredientSet = new Set(requiredIngredients.map(ing => ing.split(' ')[0]));
+        // Count missing ingredients
+        const recipeIngredientSet = new Set(requiredIngredients.map(ing => ing.toLowerCase()));
         missingCount = [...recipeIngredientSet].filter(recipeIngName =>
-          !userIngredientsLower.some(userIng => userIng.includes(recipeIngName))
+          !userIngredientsLower.includes(recipeIngName)
         ).length;
 
         if (matchCount > 0) {
@@ -126,7 +132,7 @@ const IngredientSuggestScreen = () => {
   }, [userIngredients, allRecipes, findMatches]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, currentLanguage === 'ar' && { direction: 'rtl' }]}>
       <View style={styles.searchContainer}>
         <View style={[styles.searchInputContainer, I18nManager.isRTL && styles.rtlSearchInputContainer]}>
           <MaterialIcons name="search" size={20} color={theme.COLORS.gray[500]} />
@@ -148,19 +154,21 @@ const IngredientSuggestScreen = () => {
 
       <ScrollView style={styles.content}>
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, I18nManager.isRTL && styles.rtlText]}>
-            {t('yourIngredients')}
-          </Text>
+          <View style={currentLanguage === 'ar' ? { flexDirection: 'row', justifyContent: 'flex-end' } : {}}>
+            <Text style={styles.sectionTitle}>
+              {t('yourIngredients')}
+            </Text>
+          </View>
           <View style={[styles.selectedIngredientsContainer, I18nManager.isRTL && styles.rtlContainer]}>
             {userIngredients.length > 0 ? (
               userIngredients.map(ingredient => (
                 <TouchableOpacity
-                  key={ingredient}
+                  key={ingredient.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                   style={[styles.selectedIngredient, I18nManager.isRTL && styles.rtlSelectedIngredient]}
                   onPress={() => toggleIngredient(ingredient)}
                 >
                   <Text style={[styles.selectedIngredientText, I18nManager.isRTL && styles.rtlMargin]}>
-                    {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient })}
+                    {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}
                   </Text>
                   <MaterialIcons name="close" size={16} color={theme.COLORS.white} />
                 </TouchableOpacity>
@@ -174,13 +182,15 @@ const IngredientSuggestScreen = () => {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, I18nManager.isRTL && styles.rtlText]}>
-            {searchQuery ? t('searchResults') : t('commonIngredients')}
-          </Text>
+          <View style={currentLanguage === 'ar' ? { flexDirection: 'row', justifyContent: 'flex-end' } : {}}>
+            <Text style={styles.sectionTitle}>
+              {searchQuery ? t('searchResults') : t('commonIngredients')}
+            </Text>
+          </View>
           <View style={[styles.ingredientsGrid, I18nManager.isRTL && styles.rtlContainer]}>
             {filteredIngredients.map(ingredient => (
               <TouchableOpacity
-                key={ingredient}
+                key={ingredient.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                 style={[
                   styles.ingredientButton,
                   userIngredients.includes(ingredient) && styles.selectedIngredientButton,
@@ -195,7 +205,7 @@ const IngredientSuggestScreen = () => {
                     I18nManager.isRTL && styles.rtlText
                   ]}
                 >
-                  {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient })}
+                  {t(`ingredientsList.${ingredient.toLowerCase()}`, { defaultValue: ingredient.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}
                 </Text>
               </TouchableOpacity>
             ))}

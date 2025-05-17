@@ -49,7 +49,9 @@ export const onLanguageChange = (callback) => {
 };
 
 export const t = (key, params = {}) => {
-  let text = (translations[currentLang] && translations[currentLang][key]) || key;
+  // Support nested keys like 'ingredientsList.tomatoes'
+  let text = key.split('.').reduce((obj, k) => (obj && obj[k] !== undefined ? obj[k] : undefined), translations[currentLang]);
+  if (typeof text !== 'string') text = key; // fallback to key if not found
   if (params) {
     Object.keys(params).forEach(param => {
       text = text.replace(`{${param}}`, params[param]);

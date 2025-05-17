@@ -3,17 +3,17 @@ import { View, StyleSheet, Dimensions } from 'react-native';
 import LottieView from 'lottie-react-native';
 import theme from '../components/theme';
 
-const { width, height } = Dimensions.get('window');
 
 const SplashScreen = ({ onAnimationFinish }) => {
   return (
     <View style={styles.container}>
       <LottieView
-        source={require('../assets/splashScreen.json')}
+        source={require('../assets/splashAnim.json')}
         autoPlay
         loop={false}
         onAnimationFinish={onAnimationFinish}
-        style={styles.animation}
+        style={{ width: '100%', height: '100%' }}
+        onError={console.warn}
       />
     </View>
   );
@@ -25,11 +25,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  animation: {
-    width: width * 0.8, // 80% of screen width
-    height: height * 0.4, // 40% of screen height
-  },
+  }
+  
 });
 
 export default SplashScreen; 

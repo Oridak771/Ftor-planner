@@ -155,5 +155,17 @@
     "turmeric": "Curcuma",
     "ginger": "Gingembre",
     "cinnamon": "Cannelle"
-  }
+  },
+  "yourIngredients": "Vos ingrédients",
+  "noIngredientsAdded": "Ajoutez les ingrédients que vous avez à partir de la liste ci-dessous",
+  "snackPlural": "Collations",
+  "atLeastOneMealType": "Au moins un type de repas doit être activé.",
+  "exportSuccess": "Exportation réussie",
+  "exportSuccessMsg": "Vos données ont été exportées avec succès.",
+  "exportFailed": "Échec de l'exportation",
+  "exportFailedMsg": "Impossible d'exporter les données.",
+  "importSuccess": "Importation réussie",
+  "importSuccessMsg": "Vos données ont été importées avec succès.",
+  "importFailed": "Échec de l'importation",
+  "importFailedMsg": "Impossible d'importer les données."
 }
